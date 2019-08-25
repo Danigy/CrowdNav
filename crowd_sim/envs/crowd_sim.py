@@ -1,14 +1,30 @@
+#!/usr/bin/env python3
+
 import logging
 import gym
-import matplotlib.lines as mlines
 import numpy as np
 import rvo2
 from matplotlib import patches
 from numpy.linalg import norm
+import sys, os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '.'))
+sys.path.append(os.path.join(os.path.dirname(__file__), 'envs'))
+sys.path.append(os.path.join(os.path.dirname(__file__), 'envs/utils'))
+
 from crowd_sim.envs.utils.human import Human
 from crowd_sim.envs.utils.info import *
 from crowd_sim.envs.utils.utils import point_to_segment_dist
 
+import pygame
+from pygame.color import THECOLORS
+
+import pymunk
+from pymunk.vec2d import Vec2d
+from pymunk.pygame_util import DrawOptions
+from pymunk.space_debug_draw_options import SpaceDebugDrawOptions, SpaceDebugColor
+
+import random
 
 class CrowdSim(gym.Env):
     metadata = {'render.modes': ['human']}
@@ -47,7 +63,33 @@ class CrowdSim(gym.Env):
         self.states = None
         self.action_values = None
         self.attention_weights = None
-
+        
+    def create_robot(self, x, y, r, robot_radius):
+        inertia = pymunk.moment_for_circle(1, 0, 14, (0, 0))
+        self.robot_body = pymunk.Body(1, inertia)
+        self.robot_body.position = x, y
+        self.robot_shape = pymunk.Circle(self.robot_body, robot_radius)
+        self.robot_shape.color = THECOLORS["white"]
+        self.robot_shape.elasticity = 1.0
+        self.robot_shape.collision_type = 3
+        collison_handler = self.space.add_wildcard_collision_handler(3)
+        collison_handler.begin = self.collision_begin
+        collison_handler.separate = self.collision_separate
+        self.robot_body.angle = 0
+        driving_direction = Vec2d(1, 0).rotated(self.robot_body.angle)
+        self.robot_body.apply_impulse_at_local_point(driving_direction)
+        self.space.add(self.robot_body, self.robot_shape)
+        
+    def create_pedestrian(self, x, y, r):
+        ped_body = pymunk.Body(1000, 1000)
+        ped_shape = pymunk.Circle(ped_body, r)
+        ped_shape.elasticity = 1.0
+        ped_body.position = x, y
+        ped_body.velocity = random.randint(-self.max_ped_velocity, self.max_ped_velocity) * Vec2d(0, 1)
+        ped_shape.color = (255, 165, 0, 10)
+        self.space.add(ped_body, ped_shape)
+        return [ped_body, ped_shape]
+    
     def configure(self, config):
         self.config = config
         self.time_limit = config.getint('env', 'time_limit')
@@ -57,6 +99,9 @@ class CrowdSim(gym.Env):
         self.collision_penalty = config.getfloat('reward', 'collision_penalty')
         self.discomfort_dist = config.getfloat('reward', 'discomfort_dist')
         self.discomfort_penalty_factor = config.getfloat('reward', 'discomfort_penalty_factor')
+        self.draw_screen = config.getboolean('env', 'draw_screen')
+        self.show_sensors = config.getboolean('env', 'show_sensors')
+
         if self.config.get('humans', 'policy') == 'orca':
             self.case_capacity = {'train': np.iinfo(np.uint32).max - 2000, 'val': 1000, 'test': 1000}
             self.case_size = {'train': np.iinfo(np.uint32).max - 2000, 'val': config.getint('env', 'val_size'),
@@ -77,6 +122,42 @@ class CrowdSim(gym.Env):
             logging.info("Not randomize human's radius and preferred speed")
         logging.info('Training simulation: {}, test simulation: {}'.format(self.train_val_sim, self.test_sim))
         logging.info('Square width: {}, circle width: {}'.format(self.square_width, self.circle_radius))
+        
+       # ===== Begin Pymunk setup ===== #
+        self.display_fps = 1000
+        
+        # PyGame init
+        #self.width = int(1.1 * self.square_width)
+        #self.height = int(1.1 * self.square_width)
+        
+        self.width = 1400
+        self.height = 1400
+        
+        if not self.draw_screen:
+            os.environ["SDL_VIDEODRIVER"] = "dummy"
+        
+        else:
+            self.screen = pygame.display.set_mode((self.width, self.height))
+            self.surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            self.draw_options = DrawOptions(self.screen)
+            self.draw_options.flags = 3
+
+        self.clock = pygame.time.Clock()
+        
+        # Physics stuff.
+        self.space = pymunk.Space()
+        self.space.gravity = pymunk.Vec2d(0., 0.)
+        
+        self.max_ped_velocity = 50
+        
+        self.scale_factor = 100
+        self.angle_offset = np.pi / 2
+        
+        # Create pedestrian bodies
+        self.pedestrians = []
+
+        # Create the robot
+        self.create_robot(self.width/2, self.height/2, 0, self.scale_factor * self.robot.radius)
 
     def set_robot(self, robot):
         self.robot = robot
@@ -151,6 +232,15 @@ class CrowdSim(gym.Env):
                     self.humans.append(human)
         else:
             raise ValueError("Rule doesn't exist")
+        
+        if len(self.pedestrians) > 0:
+            for i in range(human_num):
+                self.space.remove(self.pedestrians[i][0], self.pedestrians[i][1])
+                        
+            self.pedestrians = []
+        
+        for i in range(human_num): 
+            self.pedestrians.append(self.create_pedestrian(self.scale_factor * self.humans[i].px + self.width/2, self.scale_factor * self.humans[i].py + self.height/2, self.scale_factor * self.humans[i].radius))
 
     def generate_circle_crossing_human(self):
         human = Human(self.config, 'humans')
@@ -186,6 +276,7 @@ class CrowdSim(gym.Env):
         while True:
             px = np.random.random() * self.square_width * 0.5 * sign
             py = (np.random.random() - 0.5) * self.square_width
+
             collide = False
             for agent in [self.robot] + self.humans:
                 if norm((px - agent.px, py - agent.py)) < human.radius + agent.radius + self.discomfort_dist:
@@ -219,6 +310,11 @@ class CrowdSim(gym.Env):
             raise ValueError('Episode is not done yet')
         params = (10, 10, 5, 5)
         sim = rvo2.PyRVOSimulator(self.time_step, *params, 0.3, 1)
+#         sim.addAgent(self.robot.get_position(), *params, self.robot.radius, self.robot.v_pref,
+#                      self.robot.get_velocity())
+#         for human in self.humans:
+#             sim.addAgent(human.get_position(), *params, human.radius, human.v_pref, human.get_velocity())
+
         sim.addAgent(self.robot.get_position(), *params, self.robot.radius, self.robot.v_pref,
                      self.robot.get_velocity())
         for human in self.humans:
@@ -271,7 +367,11 @@ class CrowdSim(gym.Env):
         else:
             counter_offset = {'train': self.case_capacity['val'] + self.case_capacity['test'],
                               'val': 0, 'test': self.case_capacity['val']}
-            self.robot.set(0, -self.circle_radius, 0, self.circle_radius, 0, 0, np.pi / 2)
+            
+            px = 0
+            py = -self.circle_radius
+            self.robot.set(px, py, 0, self.circle_radius, 0, 0, np.pi / 2)
+
             if self.case_counter[phase] >= 0:
                 np.random.seed(counter_offset[phase] + self.case_counter[phase])
                 if phase in ['train', 'val']:
@@ -320,9 +420,11 @@ class CrowdSim(gym.Env):
 
         """
         human_actions = []
+
         for human in self.humans:
             # observation for humans is always coordinates
             ob = [other_human.get_observable_state() for other_human in self.humans if other_human != human]
+          
             if self.robot.visible:
                 ob += [self.robot.get_observable_state()]
             human_actions.append(human.act(ob))
@@ -416,6 +518,34 @@ class CrowdSim(gym.Env):
                 ob = [human.get_next_observable_state(action) for human, action in zip(self.humans, human_actions)]
             elif self.robot.sensor == 'RGB':
                 raise NotImplementedError
+            
+        # Update Pymunk
+        robot_position = self.robot.get_position()
+        self.space.step(self.time_step)
+
+        # Update Pygame screen
+        if self.draw_screen:
+            pygame_px = int(self.scale_factor * robot_position[0] + self.width/2)
+            pygame_py = int(self.scale_factor * robot_position[1] + self.height/2)
+            
+            self.robot_body.position = Vec2d(pygame_px, pygame_py)
+            pygame.draw.circle(self.surface, (255, 255, 255, 100), (pygame_px, self.screen_y(pygame_py)), int(self.scale_factor * self.robot.personal_space_distance))
+            
+            index = 0
+            for human in self.humans:
+                human_state = human.get_full_state()
+                pygame_px = int(self.scale_factor * human_state.px + self.width/2)
+                pygame_py = int(self.scale_factor * human_state.py + self.height/2)
+                self.pedestrians[index][0].position = Vec2d(pygame_px, pygame_py)
+                pygame.draw.circle(self.surface, (255, 255, 255, 100), (pygame_px, self.screen_y(pygame_py)), int(self.scale_factor * human.personal_space_distance))
+                index += 1
+            
+            self.space.debug_draw(self.draw_options)
+            self.screen.blit(self.surface, (0, 0))  
+            pygame.display.flip()
+            self.clock.tick(self.display_fps)
+            self.screen.fill(THECOLORS["black"])
+            self.surface.fill(THECOLORS["black"])
 
         return ob, reward, done, info
 
@@ -545,8 +675,8 @@ class CrowdSim(gym.Env):
             global_step = 0
 
             def update(frame_num):
-                nonlocal global_step
-                nonlocal arrows
+                global global_step
+                global arrows
                 global_step = frame_num
                 robot.center = robot_positions[frame_num]
                 for i, human in enumerate(humans):
@@ -608,3 +738,19 @@ class CrowdSim(gym.Env):
                 plt.show()
         else:
             raise NotImplementedError
+
+    def collision_begin(self, space, arbiter, data):
+        self.crashed = True
+        return True
+    
+    def collision_separate(self, space, arbiter, data):
+        self.crashed = False
+        return False
+    
+    def screen_y(self, y):
+        return self.height - y
+        
+if __name__ == '__main__':
+    cs = CrowdSim()
+    while True:
+        cs.step([random.uniform(0, 100), random.uniform(-10, 10)])

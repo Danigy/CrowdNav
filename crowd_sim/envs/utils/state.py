@@ -1,10 +1,11 @@
 class FullState(object):
-    def __init__(self, px, py, vx, vy, radius, gx, gy, v_pref, theta):
+    def __init__(self, px, py, vx, vy, radius, personal_space_distance, gx, gy, v_pref, theta):
         self.px = px
         self.py = py
         self.vx = vx
         self.vy = vy
         self.radius = radius
+        self.personal_space_distance = personal_space_distance
         self.gx = gx
         self.gy = gy
         self.v_pref = v_pref
@@ -15,29 +16,30 @@ class FullState(object):
         self.velocity = (self.vx, self.vy)
 
     def __add__(self, other):
-        return other + (self.px, self.py, self.vx, self.vy, self.radius, self.gx, self.gy, self.v_pref, self.theta)
+        return other + (self.px, self.py, self.vx, self.vy, self.radius, self.personal_space_distance, self.gx, self.gy, self.v_pref, self.theta)
 
     def __str__(self):
-        return ' '.join([str(x) for x in [self.px, self.py, self.vx, self.vy, self.radius, self.gx, self.gy,
+        return ' '.join([str(x) for x in [self.px, self.py, self.vx, self.vy, self.radius, self.personal_space_distance, self.gx, self.gy,
                                           self.v_pref, self.theta]])
 
 
 class ObservableState(object):
-    def __init__(self, px, py, vx, vy, radius):
+    def __init__(self, px, py, vx, vy, radius, personal_space_distance):
         self.px = px
         self.py = py
         self.vx = vx
         self.vy = vy
         self.radius = radius
+        self.personal_space_distance = personal_space_distance
 
         self.position = (self.px, self.py)
         self.velocity = (self.vx, self.vy)
 
     def __add__(self, other):
-        return other + (self.px, self.py, self.vx, self.vy, self.radius)
+        return other + (self.px, self.py, self.vx, self.vy, self.radius, self.personal_space_distance)
 
     def __str__(self):
-        return ' '.join([str(x) for x in [self.px, self.py, self.vx, self.vy, self.radius]])
+        return ' '.join([str(x) for x in [self.px, self.py, self.vx, self.vy, self.radius, self.personal_space_distance]])
 
 
 class JointState(object):

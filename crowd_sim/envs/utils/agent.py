@@ -16,6 +16,7 @@ class Agent(object):
         self.visible = config.getboolean(section, 'visible')
         self.v_pref = config.getfloat(section, 'v_pref')
         self.radius = config.getfloat(section, 'radius')
+        self.personal_space_distance = config.getfloat(section, 'personal_space_distance')
         self.policy = policy_factory[config.get(section, 'policy')]()
         self.sensor = config.get(section, 'sensor')
         self.kinematics = self.policy.kinematics if self.policy is not None else None
@@ -44,7 +45,7 @@ class Agent(object):
         self.v_pref = np.random.uniform(0.5, 1.5)
         self.radius = np.random.uniform(0.3, 0.5)
 
-    def set(self, px, py, gx, gy, vx, vy, theta, radius=None, v_pref=None):
+    def set(self, px, py, gx, gy, vx, vy, theta, radius=None, personal_space_distance=None, v_pref=None):
         self.px = px
         self.py = py
         self.gx = gx
@@ -58,7 +59,7 @@ class Agent(object):
             self.v_pref = v_pref
 
     def get_observable_state(self):
-        return ObservableState(self.px, self.py, self.vx, self.vy, self.radius)
+        return ObservableState(self.px, self.py, self.vx, self.vy, self.radius, self.personal_space_distance)
 
     def get_next_observable_state(self, action):
         self.check_validity(action)
@@ -71,10 +72,10 @@ class Agent(object):
             next_theta = self.theta + action.r
             next_vx = action.v * np.cos(next_theta)
             next_vy = action.v * np.sin(next_theta)
-        return ObservableState(next_px, next_py, next_vx, next_vy, self.radius)
+        return ObservableState(next_px, next_py, next_vx, next_vy, self.radius, self.personal_space_distance)
 
     def get_full_state(self):
-        return FullState(self.px, self.py, self.vx, self.vy, self.radius, self.gx, self.gy, self.v_pref, self.theta)
+        return FullState(self.px, self.py, self.vx, self.vy, self.radius, self.personal_space_distance, self.gx, self.gy, self.v_pref, self.theta)
 
     def get_position(self):
         return self.px, self.py
