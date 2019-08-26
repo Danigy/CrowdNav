@@ -46,7 +46,7 @@ class SimpleNavigation():
         parser.add_argument('-w', '--weights', type=pathstr, required=False, help='Path to weights file')
         parser.add_argument('-d', '--draw_screen', default=False, action='store_true')
         parser.add_argument('--env_config', type=str, default='configs/env.config')
-        parser.add_argument('--policy', type=str, default='cadrl')
+        parser.add_argument('--policy', type=str, default='multi_human_rl')
         parser.add_argument('--policy_config', type=str, default='configs/policy.config')
         parser.add_argument('--train_config', type=str, default='configs/train.config')
         
@@ -154,7 +154,7 @@ class SimpleNavigation():
             os.exit(0)
 
         print("Holonomic?", HOLONOMIC)
-        model.learn(total_timesteps=500000)
+        model.learn(total_timesteps=100000)
         model.save(tb_log_dir + "/stable_baselines")
         print(">>>>> End testing <<<<<", self.string_to_filename(json.dumps(params)))
         print("Final weights saved at: ", tb_log_dir + "/stable_baselines.pkl")

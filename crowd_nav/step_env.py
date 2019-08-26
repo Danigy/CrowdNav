@@ -10,9 +10,6 @@ from crowd_nav.policy.policy_factory import policy_factory
 from crowd_sim.envs.utils.robot import Robot
 from crowd_sim.envs.policy.orca import ORCA
 
-def get_state(ob):
-    return ob[0]
-
 def main():
     parser = argparse.ArgumentParser('Parse configuration file')
     parser.add_argument('--env_config', type=str, default='configs/env.config')
@@ -100,6 +97,9 @@ def main():
             last_pos = np.array(robot.get_position())
             while not done:
                 action = robot.act(ob)
+                action = [0.1, 0.1]
+                robot.kinematics = 'unicycle'
+                print(action)
                 ob, _, done, info = env.step(action)
                 current_pos = np.array(robot.get_position())
                 logging.debug('Speed: %.2f', np.linalg.norm(current_pos - last_pos) / robot.time_step)

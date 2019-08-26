@@ -24,22 +24,23 @@ class FullState(object):
 
 
 class ObservableState(object):
-    def __init__(self, px, py, vx, vy, radius, personal_space):
+    def __init__(self, px, py, vx, vy, radius, personal_space, theta=0.0):
         self.px = px
         self.py = py
         self.vx = vx
         self.vy = vy
         self.radius = radius
         self.personal_space = personal_space
+        self.theta = theta
 
         self.position = (self.px, self.py)
         self.velocity = (self.vx, self.vy)
 
     def __add__(self, other):
-        return other + (self.px, self.py, self.vx, self.vy, self.radius, self.personal_space)
+        return other + (self.px, self.py, self.vx, self.vy, self.radius, self.personal_space, self.theta)
 
     def __str__(self):
-        return ' '.join([str(x) for x in [self.px, self.py, self.vx, self.vy, self.radius, self.personal_space]])
+        return ' '.join([str(x) for x in [self.px, self.py, self.vx, self.vy, self.radius, self.personal_space, self.theta]])
 
 
 class JointState(object):

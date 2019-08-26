@@ -99,7 +99,7 @@ class CrowdSim(gym.Env):
         ped_shape.elasticity = 1.0
         ped_body.position = x, y
         ped_body.velocity = random.randint(-self.max_ped_velocity, self.max_ped_velocity) * Vec2d(0, 1)
-        ped_shape.color = (255, 165, 0, 10)
+        ped_shape.color = THECOLORS["orange"]
         self.space.add(ped_body, ped_shape)
         return [ped_body, ped_shape]
     
@@ -110,6 +110,7 @@ class CrowdSim(gym.Env):
         self.randomize_attributes = config.getboolean('env', 'randomize_attributes')
         self.success_reward = config.getfloat('reward', 'success_reward')
         self.collision_penalty = config.getfloat('reward', 'collision_penalty')
+        self.potential_reward_weight = config.getfloat('reward', 'potential_reward_weight')        
         self.discomfort_dist = config.getfloat('reward', 'discomfort_dist')
         self.discomfort_penalty_factor = config.getfloat('reward', 'discomfort_penalty_factor')
         self.draw_screen = config.getboolean('env', 'draw_screen')
@@ -139,13 +140,15 @@ class CrowdSim(gym.Env):
         
        # ===== Begin Pymunk setup ===== #
         self.display_fps = 1000
+
+        self.scale_factor = 100
+        self.angle_offset = np.pi / 2
         
-        # PyGame init
-        #self.width = int(1.1 * self.square_width)
-        #self.height = int(1.1 * self.square_width)
+        self.width = int(1.1 * self.square_width * self.scale_factor)
+        self.height = int(1.1 * self.square_width * self.scale_factor)
         
-        self.width = 1400
-        self.height = 1400
+        #self.width = 1000
+        #self.height = 1000
         
         if not self.draw_screen:
             os.environ["SDL_VIDEODRIVER"] = "dummy"
@@ -164,18 +167,15 @@ class CrowdSim(gym.Env):
         
         self.max_ped_velocity = 50
         
-        self.scale_factor = 100
-        self.angle_offset = np.pi / 2
-        
         # List to hold the pedestrians
         self.pedestrians = []
 
-        # Create the robot
-        self.create_robot(self.width/2, self.height/2, 0, self.scale_factor * self.robot.radius)
+        if self.draw_screen:
+            # Create the Pygame robot for display
+            self.create_robot(self.width/2, self.height/2, 0, self.scale_factor * self.robot.radius)
         
         self.action_space = spaces.Box(-1.0, 1.0, shape=[2,])
         self.observation_space = spaces.Box(-1.0, 1.0, shape=[self.n_sensors + 2 + 4 * self.human_num,])
-
 
     def set_robot(self, robot):
         self.robot = robot
@@ -255,15 +255,16 @@ class CrowdSim(gym.Env):
                     self.humans.append(human)
         else:
             raise ValueError("Rule doesn't exist")
-        
-        if len(self.pedestrians) > 0:
-            for i in range(human_num):
-                self.space.remove(self.pedestrians[i][0], self.pedestrians[i][1])
+
+        if self.draw_screen:
+            if len(self.pedestrians) > 0:
+                for i in range(human_num):
+                    self.space.remove(self.pedestrians[i][0], self.pedestrians[i][1])                    
                         
             self.pedestrians = []
         
-        for i in range(human_num): 
-            self.pedestrians.append(self.create_pedestrian(self.scale_factor * self.humans[i].px + self.width/2, self.scale_factor * self.humans[i].py + self.height/2, self.scale_factor * self.humans[i].radius))
+            for i in range(human_num):
+                self.pedestrians.append(self.create_pedestrian(self.scale_factor * self.humans[i].px + self.width/2, self.scale_factor * self.humans[i].py + self.height/2, self.scale_factor * self.humans[i].radius))
 
     def generate_circle_crossing_human(self):
         human = Human(self.config, 'humans')
@@ -342,8 +343,8 @@ class CrowdSim(gym.Env):
         while True:
             gx = np.random.random() * self.square_width * 0.5 * -sign
             gy = (np.random.random() - 0.5) * self.hallway_width
-#             gx = px
-#             gy = py
+            #gx = px
+            #gy = py
             collide = False
             for agent in [self.robot] + self.humans:
                 if norm((gx - agent.gx, gy - agent.gy)) < human.radius + agent.radius + self.discomfort_dist:
@@ -367,11 +368,6 @@ class CrowdSim(gym.Env):
             raise ValueError('Episode is not done yet')
         params = (10, 10, 5, 5)
         sim = rvo2.PyRVOSimulator(self.time_step, *params, 0.3, 1)
-#         sim.addAgent(self.robot.get_position(), *params, self.robot.radius, self.robot.v_pref,
-#                      self.robot.get_velocity())
-#         for human in self.humans:
-#             sim.addAgent(human.get_position(), *params, human.radius, human.v_pref, human.get_velocity())
-
         sim.addAgent(self.robot.get_position(), *params, self.robot.radius, self.robot.v_pref,
                      self.robot.get_velocity())
         for human in self.humans:
@@ -401,9 +397,15 @@ class CrowdSim(gym.Env):
         del sim
         return self.human_times
     
-    def get_state(self, action=ActionXY(0.0, 0.0)):
+    def _get_state(self, action=None):
         state = []
-                
+
+        if action is None:
+            if self.robot.kinematics == 'holonomic':
+                action = ActionXY(0.0, 0.0)
+            else:
+                action = ActionRot(0.0, 0.0)
+
         if self.robot.kinematics == 'holonomic':
             gx = self.robot.gx - self.robot.px
             gy = self.robot.gy - self.robot.py
@@ -435,8 +437,8 @@ class CrowdSim(gym.Env):
                 pygame_px = self.scale_factor * human.px + self.width / 2.0
                 pygame_py = self.scale_factor * human.py + self.height / 2.0
                 
-                delta_px = 2 * self.scale_factor * vx + pygame_px
-                delta_py = 2 * self.scale_factor * vy + pygame_py
+                delta_px = 3 * self.scale_factor * vx + pygame_px
+                delta_py = 3 * self.scale_factor * vy + pygame_py
     
                 pygame.draw.lines(self.surface, (0, 255, 0), False, [Vec2d(pygame_px, self.screen_y(pygame_py)), Vec2d(delta_px, self.screen_y(delta_py))], 3)
 
@@ -515,7 +517,7 @@ class CrowdSim(gym.Env):
         elif self.robot.sensor == 'RGB':
             raise NotImplementedError
 
-        state = self.get_state()
+        state = self._get_state()
         
         return state
 
@@ -527,6 +529,12 @@ class CrowdSim(gym.Env):
         Compute actions for all agents, detect collision, update environment and return (ob, reward, done, info)
 
         """
+
+        #if self.robot.kinematics == 'holonomic':
+        #    action = ActionXY(0.0, 0.0)
+        #else:
+        #    action = ActionRot(1.0, 0.1)            
+
         self.n_episodes += 1
         
         if self.robot.kinematics == 'holonomic':
@@ -544,81 +552,7 @@ class CrowdSim(gym.Env):
                 ob += [self.robot.get_observable_state()]
             human_actions.append(human.act(ob))
 
-        # collision detection
-        dmin = float('inf')
-        collision = False
-        for i, human in enumerate(self.humans):
-            px = human.px - self.robot.px
-            py = human.py - self.robot.py
-            if self.robot.kinematics == 'holonomic':
-                vx = human.vx - action.vx
-                vy = human.vy - action.vy
-            else:
-                vx = human.vx - action.v * np.cos(action.r + self.robot.theta)
-                vy = human.vy - action.v * np.sin(action.r + self.robot.theta)
-            ex = px + vx * self.time_step
-            ey = py + vy * self.time_step
-            # closest distance between boundaries of two agents
-            closest_dist = point_to_segment_dist(px, py, ex, ey, 0, 0) - human.radius - self.robot.radius
-            if closest_dist < 0:
-                collision = True
-                # logging.debug("Collision: distance between robot and p{} is {:.2E}".format(i, closest_dist))
-                break
-            elif closest_dist < dmin:
-                dmin = closest_dist
-
-        # collision detection between humans
-        human_num = len(self.humans)
-        for i in range(human_num):
-            for j in range(i + 1, human_num):
-                dx = self.humans[i].px - self.humans[j].px
-                dy = self.humans[i].py - self.humans[j].py
-                dist = (dx ** 2 + dy ** 2) ** (1 / 2) - self.humans[i].radius - self.humans[j].radius
-                if dist < 0:
-                    # detect collision but don't take humans' collision into account
-                    logging.debug('Collision happens between humans in step()')
-
-        # check if reaching the goal
-        end_position = np.array(self.robot.compute_position(action, self.time_step))
-        reaching_goal = norm(end_position - np.array(self.robot.get_goal_position())) < self.robot.radius
-
-        reward = 0
-        
-        if self.global_time >= self.time_limit - 1:
-            reward = 0
-            done = True
-            info = Timeout()
-        elif collision:
-            reward = self.collision_penalty
-            done = True
-            info = Collision()
-        elif reaching_goal:
-            reward = self.success_reward
-            done = True
-            info = ReachGoal()
-        elif dmin < self.discomfort_dist:
-            # only penalize agent for getting too close if it's visible
-            # adjust the reward based on FPS
-            reward = (dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
-            done = False
-            info = Danger(dmin)
-        else:
-            done = False
-            info = Nothing()
-            
-        # Get initial goal potential and collision potential
-        if not done:
-            if self.n_episodes == 1:
-                self.initial_potential = self.get_potential()
-                self.normalized_potential = 1.0
-            
-            # Get delta potential and compute reward
-            current_potential = self.get_potential()
-            new_normalized_potential = current_potential / self.initial_potential
-            potential_reward = self.normalized_potential - new_normalized_potential
-            reward += potential_reward * 1.0
-            self.normalized_potential = new_normalized_potential
-            info = Nothing()
+        reward, done, info = self._get_reward(action)
 
         if update:
             # store state, action value and attention weights
@@ -654,13 +588,17 @@ class CrowdSim(gym.Env):
 
         # Update Pygame screen
         if self.draw_screen:
+            pygame_gx = int(self.scale_factor * self.robot.gx + self.width / 2.0)
+            pygame_gy = int(self.scale_factor * self.robot.gy + self.height / 2.0)                
+            pygame.draw.circle(self.surface, (0, 255, 0, 200), (pygame_gx, self.screen_y(pygame_gy)), 20)                
+            
             pygame_px = int(self.scale_factor * self.robot.px + self.width/2)
             pygame_py = int(self.scale_factor * self.robot.py + self.height/2)
             
             self.robot_body.position = Vec2d(pygame_px, pygame_py)
             self.robot_body.angle = self.robot.theta
             
-            pygame.draw.circle(self.surface, (255, 255, 255, 25), (pygame_px, self.screen_y(pygame_py)), int(self.scale_factor * self.robot.personal_space))
+            pygame.draw.circle(self.surface, (255, 255, 255, 30), (pygame_px, self.screen_y(pygame_py)), int(self.scale_factor * self.robot.personal_space))
             
             index = 0
             for human in self.humans:
@@ -668,22 +606,104 @@ class CrowdSim(gym.Env):
                 pygame_px = int(self.scale_factor * human_state.px + self.width/2)
                 pygame_py = int(self.scale_factor * human_state.py + self.height/2)
                 self.pedestrians[index][0].position = Vec2d(pygame_px, pygame_py)
-                pygame.draw.circle(self.surface, (255, 255, 255, 25), (pygame_px, self.screen_y(pygame_py)), int(self.scale_factor * human.personal_space))
+                pygame.draw.circle(self.surface, (255, 255, 255, 30), (pygame_px, self.screen_y(pygame_py)), int(self.scale_factor * human.personal_space))
                 index += 1
             
             self.space.debug_draw(self.draw_options)
-            self.screen.blit(self.surface, (0, 0))  
+            self.screen.blit(self.surface, (0, 0))
             pygame.display.flip()
             self.clock.tick(self.display_fps)
             self.screen.fill(THECOLORS["black"])
             self.surface.fill(THECOLORS["black"])
             
         # Convert Observable state to numpy state
-        state = self.get_state(action)
+        state = self._get_state(action)
 
         #print(state)
 
-        return state, reward, done, dict()
+        return state, reward, done, info
+
+    def _get_reward(self, action):
+        # collision detection
+        dmin = float('inf')
+        collision = False
+        for i, human in enumerate(self.humans):
+            px = human.px - self.robot.px
+            py = human.py - self.robot.py
+            if self.robot.kinematics == 'holonomic':
+                vx = human.vx - action.vx
+                vy = human.vy - action.vy
+            else:
+                vx = human.vx - action.v * np.cos(action.r + self.robot.theta)
+                vy = human.vy - action.v * np.sin(action.r + self.robot.theta)
+            ex = px + vx * self.time_step
+            ey = py + vy * self.time_step
+
+            # closest distance between boundaries of two agents
+            closest_dist = point_to_segment_dist(px, py, ex, ey, 0, 0) - human.radius - self.robot.radius
+            if closest_dist < 0:
+                collision = True
+                # logging.debug("Collision: distance between robot and p{} is {:.2E}".format(i, closest_dist))
+                break
+            elif closest_dist < dmin:
+                dmin = closest_dist
+
+        # collision detection between humans
+        human_num = len(self.humans)
+        for i in range(human_num):
+            for j in range(i + 1, human_num):
+                dx = self.humans[i].px - self.humans[j].px
+                dy = self.humans[i].py - self.humans[j].py
+                dist = (dx ** 2 + dy ** 2) ** (1 / 2) - self.humans[i].radius - self.humans[j].radius
+                if dist < 0:
+                    # detect collision but don't take humans' collision into account
+                    logging.debug('Collision happens between humans in step()')
+
+        # check if reaching the goal
+        end_position = np.array(self.robot.compute_position(action, self.time_step))
+        reaching_goal = norm(end_position - np.array(self.robot.get_goal_position())) < self.robot.radius
+
+        reward = 0
+        done = False
+        info = dict()
+        
+        if self.global_time >= self.time_limit - 1:
+            reward = 0
+            done = True
+            info['status'] = 'timeout'
+        elif collision:
+            reward = self.collision_penalty
+            done = True
+            info['status'] = 'collision'            
+        elif reaching_goal:
+            reward = self.success_reward
+            done = True
+            info['status'] = 'success'
+        elif dmin < self.discomfort_dist:
+            # only penalize agent for getting too close if it's visible
+            # adjust the reward based on FPS
+            reward = (dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
+            done = False
+            info['status'] = 'unsafe'
+        else:
+            done = False
+            info['status'] = 'nothing'            
+            
+        # Get initial goal potential and collision potential
+        if not done:
+            if self.n_episodes == 1:
+                self.initial_potential = self.get_potential()
+                self.normalized_potential = 1.0
+            
+            # Get delta potential and compute reward
+            current_potential = self.get_potential()
+            new_normalized_potential = current_potential / self.initial_potential
+            potential_reward = self.normalized_potential - new_normalized_potential
+            reward += potential_reward * self.potential_reward_weight
+            self.normalized_potential = new_normalized_potential
+            info['status'] = 'nothing'
+
+        return reward, done, info
     
     def get_potential(self):
         return np.linalg.norm(np.array([self.robot.px, self.robot.py]) - np.array([self.robot.gx, self.robot.gy])) 
@@ -892,4 +912,4 @@ class CrowdSim(gym.Env):
 if __name__ == '__main__':
     cs = CrowdSim()
     while True:
-        cs.step(random.uniform(-1, 1), random.uniform(-1, 1))
+        cs.step(1.0, 0.1)
