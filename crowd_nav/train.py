@@ -74,9 +74,10 @@ def main():
     env_config = configparser.RawConfigParser()
     env_config.read(args.env_config)
     env = gym.make('CrowdSim-v0')
-    env.configure(env_config)
     robot = Robot(env_config, 'robot')
+    robot.set_policy(policy)
     env.set_robot(robot)
+    env.configure(env_config)
 
     # read training parameters
     if args.train_config is None:
@@ -94,7 +95,7 @@ def main():
     epsilon_end = train_config.getfloat('train', 'epsilon_end')
     epsilon_decay = train_config.getfloat('train', 'epsilon_decay')
     checkpoint_interval = train_config.getint('train', 'checkpoint_interval')
-
+    
     # configure trainer and explorer
     memory = ReplayMemory(capacity)
     model = policy.get_model()
@@ -144,6 +145,7 @@ def main():
         explorer.run_k_episodes(100, 'train', update_memory=True, episode=0)
         logging.info('Experience set size: %d/%d', len(memory), memory.capacity)
     episode = 0
+
     while episode < train_episodes:
         if args.resume:
             epsilon = epsilon_end
@@ -153,6 +155,7 @@ def main():
             else:
                 epsilon = epsilon_end
         robot.policy.set_epsilon(epsilon)
+        
 
         # evaluate the model
         if episode % evaluation_interval == 0:
@@ -162,9 +165,12 @@ def main():
         explorer.run_k_episodes(sample_episodes, 'train', update_memory=True, episode=episode)
         trainer.optimize_batch(train_batches)
         episode += 1
+        print("N episodes:", episode)
+
 
         if episode % target_update_interval == 0:
             explorer.update_target_model(model)
+            print("N episodes:", episode)
 
         if episode != 0 and episode % checkpoint_interval == 0:
             torch.save(model.state_dict(), rl_weight_file)

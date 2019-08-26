@@ -1,11 +1,11 @@
 class FullState(object):
-    def __init__(self, px, py, vx, vy, radius, personal_space_distance, gx, gy, v_pref, theta):
+    def __init__(self, px, py, vx, vy, radius, personal_space, gx, gy, v_pref, theta):
         self.px = px
         self.py = py
         self.vx = vx
         self.vy = vy
         self.radius = radius
-        self.personal_space_distance = personal_space_distance
+        self.personal_space = personal_space
         self.gx = gx
         self.gy = gy
         self.v_pref = v_pref
@@ -16,30 +16,30 @@ class FullState(object):
         self.velocity = (self.vx, self.vy)
 
     def __add__(self, other):
-        return other + (self.px, self.py, self.vx, self.vy, self.radius, self.personal_space_distance, self.gx, self.gy, self.v_pref, self.theta)
+        return other + (self.px, self.py, self.vx, self.vy, self.radius, self.personal_space, self.gx, self.gy, self.v_pref, self.theta)
 
     def __str__(self):
-        return ' '.join([str(x) for x in [self.px, self.py, self.vx, self.vy, self.radius, self.personal_space_distance, self.gx, self.gy,
+        return ' '.join([str(x) for x in [self.px, self.py, self.vx, self.vy, self.radius, self.personal_space, self.gx, self.gy,
                                           self.v_pref, self.theta]])
 
 
 class ObservableState(object):
-    def __init__(self, px, py, vx, vy, radius, personal_space_distance):
+    def __init__(self, px, py, vx, vy, radius, personal_space):
         self.px = px
         self.py = py
         self.vx = vx
         self.vy = vy
         self.radius = radius
-        self.personal_space_distance = personal_space_distance
+        self.personal_space = personal_space
 
         self.position = (self.px, self.py)
         self.velocity = (self.vx, self.vy)
 
     def __add__(self, other):
-        return other + (self.px, self.py, self.vx, self.vy, self.radius, self.personal_space_distance)
+        return other + (self.px, self.py, self.vx, self.vy, self.radius, self.personal_space)
 
     def __str__(self):
-        return ' '.join([str(x) for x in [self.px, self.py, self.vx, self.vy, self.radius, self.personal_space_distance]])
+        return ' '.join([str(x) for x in [self.px, self.py, self.vx, self.vy, self.radius, self.personal_space]])
 
 
 class JointState(object):

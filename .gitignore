@@ -16,3 +16,7 @@ venv*/
 data/
 *.mp4
 videos/
+
+# egg
+build/
+dist/

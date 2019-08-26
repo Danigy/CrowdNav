@@ -10,6 +10,8 @@ from crowd_nav.policy.policy_factory import policy_factory
 from crowd_sim.envs.utils.robot import Robot
 from crowd_sim.envs.policy.orca import ORCA
 
+def get_state(ob):
+    return ob[0]
 
 def main():
     parser = argparse.ArgumentParser('Parse configuration file')
@@ -24,6 +26,7 @@ def main():
     parser.add_argument('--test_case', type=int, default=None)
     parser.add_argument('--square', default=False, action='store_true')
     parser.add_argument('--circle', default=False, action='store_true')
+    parser.add_argument('--hallway', default=False, action='store_true')
     parser.add_argument('--video_file', type=str, default=None)
     parser.add_argument('--traj', default=False, action='store_true')
     args = parser.parse_args()
@@ -45,7 +48,7 @@ def main():
     # configure logging and device
     logging.basicConfig(level=logging.INFO, format='%(asctime)s, %(levelname)s: %(message)s',
                         datefmt="%Y-%m-%d %H:%M:%S")
-    device = torch.device("cuda:0" if torch.cuda.is_available() and args.gpu else "cpu")
+    device = torch.device("cuda:1" if torch.cuda.is_available() and args.gpu else "cpu")
     logging.info('Using device: %s', device)
 
     # configure policy
@@ -64,15 +67,18 @@ def main():
     env = gym.make('CrowdSim-v0')
     robot = Robot(env_config, 'robot')
     robot.set_policy(policy)
+    #robot.kinematics = 'unicycle'
     env.set_robot(robot)
     env.configure(env_config)
     if args.square:
         env.test_sim = 'square_crossing'
     if args.circle:
         env.test_sim = 'circle_crossing'
-
+    if args.hallway:
+        env.test_sim = 'hallway_crossing'
+        
     explorer = Explorer(env, robot, device, gamma=0.9)
-
+    
     policy.set_phase(args.phase)
     policy.set_device(device)
     # set safety space for ORCA in non-cooperative simulation

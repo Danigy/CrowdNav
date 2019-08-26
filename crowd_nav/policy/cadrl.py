@@ -106,14 +106,14 @@ class CADRL(Policy):
             # propagate state of humans
             next_px = state.px + action.vx * self.time_step
             next_py = state.py + action.vy * self.time_step
-            next_state = ObservableState(next_px, next_py, action.vx, action.vy, state.radius)
+            next_state = ObservableState(next_px, next_py, action.vx, action.vy, state.radius, state.personal_space)
         elif isinstance(state, FullState):
             # propagate state of current agent
             # perform action without rotation
             if self.kinematics == 'holonomic':
                 next_px = state.px + action.vx * self.time_step
                 next_py = state.py + action.vy * self.time_step
-                next_state = FullState(next_px, next_py, action.vx, action.vy, state.radius,
+                next_state = FullState(next_px, next_py, action.vx, action.vy, state.radius, state.personal_space,
                                        state.gx, state.gy, state.v_pref, state.theta)
             else:
                 next_theta = state.theta + action.r
@@ -121,7 +121,7 @@ class CADRL(Policy):
                 next_vy = action.v * np.sin(next_theta)
                 next_px = state.px + next_vx * self.time_step
                 next_py = state.py + next_vy * self.time_step
-                next_state = FullState(next_px, next_py, next_vx, next_vy, state.radius, state.gx, state.gy,
+                next_state = FullState(next_px, next_py, next_vx, next_vy, state.radius, state.personal_space, state.gx, state.gy,
                                        state.v_pref, next_theta)
         else:
             raise ValueError('Type error')

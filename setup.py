@@ -1,9 +1,8 @@
 from setuptools import setup
 
-
 setup(
     name='crowdnav',
-    version='0.0.1',
+    version='0.0.2',
     packages=[
         'crowd_nav',
         'crowd_nav.configs',
