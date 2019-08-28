@@ -20,16 +20,15 @@ class Agent(object):
         self.policy = policy_factory[config.get(section, 'policy')]()
         self.sensor = config.get(section, 'sensor')
         self.max_linear_velocity = config.getfloat(section, 'max_linear_velocity')
-        self.max_angular_velocity = config.getfloat(section, 'max_angular_velocity') 
+        self.max_angular_velocity = config.getfloat(section, 'max_angular_velocity')                
         self.kinematics = self.policy.kinematics if self.policy is not None else None
         self.px = None
         self.py = None
         self.gx = None
         self.gy = None
-        self.gr = None
-        self.vx = None
-        self.vy = None
-        self.vr = None
+        self.vx = 0.0
+        self.vy = 0.0
+        self.vr = 0.0
         self.theta = None
         self.time_step = None
 
@@ -49,63 +48,56 @@ class Agent(object):
         self.v_pref = np.random.uniform(0.5, 1.5)
         self.radius = np.random.uniform(0.3, 0.5)
 
-    def set(self, px, py, theta, gx, gy, gr, vx, vy, vr, radius=None, personal_space=None, v_pref=None):
+    def set(self, px, py, gx, gy, vx, vy, theta, radius=None, personal_space=None, v_pref=None):
         self.px = px
         self.py = py
-        self.theta = theta
         self.gx = gx
         self.gy = gy
-        self.gr = gr
         self.vx = vx
         self.vy = vy
-        self.vr = vr
+        self.theta = theta
         if radius is not None:
             self.radius = radius
         if v_pref is not None:
             self.v_pref = v_pref
 
     def get_observable_state(self):
-        return ObservableState(self.px, self.py, self.theta, self.vx, self.vy, self.vr, self.radius, self.personal_space)
+        return ObservableState(self.px, self.py, self.vx, self.vy, self.radius, self.personal_space, self.theta)
 
     def get_next_observable_state(self, action):
         self.check_validity(action)
-        
+
         pos = self.compute_position(action, self.time_step)
-        next_px, next_py, next_theta = pos
+        next_px, next_py = pos
         
         if self.kinematics == 'holonomic':
             next_vx = action.vx
             next_vy = action.vy
-            next_vr = 0.0
         else:
-            next_vx = action.v * np.cos(next_theta)
-            next_vy = action.v * np.sin(next_theta)
-            next_vr = action.r
-            
-        return ObservableState(next_px, next_py, next_theta, next_vx, next_vy, next_vr, self.radius, self.personal_space)
+            next_vx = action.v * np.cos(self.theta)
+            next_vy = action.v * np.sin(self.theta)
+
+        return ObservableState(next_px, next_py, next_vx, next_vy, self.radius, self.personal_space, self.theta)
 
     def get_full_state(self):
-        return FullState(self.px, self.py, self.theta, self.vx, self.vy, self.vr, self.radius, self.personal_space, self.gx, self.gy, self.gr, self.v_pref)
+        return FullState(self.px, self.py, self.vx, self.vy, self.radius, self.personal_space, self.gx, self.gy, self.v_pref, self.theta)
 
     def get_position(self):
-        return self.px, self.py, self.theta
+        return self.px, self.py
 
     def set_position(self, position):
         self.px = position[0]
         self.py = position[1]
-        self.theta = position[2]
 
     def get_goal_position(self):
-        return self.gx, self.gy, self.gr
+        return self.gx, self.gy
 
     def get_velocity(self):
-        return self.vx, self.vy, self.vr
+        return self.vx, self.vy
 
     def set_velocity(self, velocity):
         self.vx = velocity[0]
         self.vy = velocity[1]
-        self.vr = velocity[2]
-
 
     @abc.abstractmethod
     def act(self, ob):
@@ -123,25 +115,23 @@ class Agent(object):
 
     def compute_position(self, action, delta_t):
         self.check_validity(action)
-        if self.kinematics == 'holonomic':
-            px = self.px + action.vx * self.max_linear_velocity / np.sqrt(2.0) * delta_t
-            py = self.py + action.vy * self.max_linear_velocity / np.sqrt(2.0) * delta_t
-            theta = self.theta
-        else:
-            theta = (self.theta + action.r * self.max_angular_velocity * delta_t) % (2 * np.pi)
-            px = self.px + np.cos(theta) * action.v * delta_t * self.max_linear_velocity / np.sqrt(2.0)
-            py = self.py + np.sin(theta) * action.v * delta_t * self.max_linear_velocity / np.sqrt(2.0)
 
-        return px, py, theta
+        px = self.px + self.vx * delta_t
+        py = self.py + self.vy * delta_t
+
+        if self.kinematics != 'holonomic':
+            self.theta = (self.theta + self.vr * delta_t) % (2 * np.pi)
+
+        return px, py
 
     def step(self, action):
         """
         Perform an action and update the state
         """
         self.check_validity(action)
-        
+
         pos = self.compute_position(action, self.time_step)
-        self.px, self.py, self.theta = pos
+        self.px, self.py = pos
         
         if self.kinematics == 'holonomic':
             self.vx = action.vx * self.max_linear_velocity / np.sqrt(2.0)
@@ -151,6 +141,9 @@ class Agent(object):
             self.vx = action.v * np.cos(self.theta) * self.max_linear_velocity / np.sqrt(2.0)
             self.vy = action.v * np.sin(self.theta) * self.max_linear_velocity / np.sqrt(2.0)
             self.vr = action.r * self.max_angular_velocity
+
+        #assert self.vx**2 + self.vy**2 <= self.max_linear_velocity**2                                            
+        #assert np.abs(self.vr) <= self.max_angular_velocity
 
     def reached_destination(self):
         return norm(np.array(self.get_position()) - np.array(self.get_goal_position())) < self.radius

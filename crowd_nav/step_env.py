@@ -3,6 +3,7 @@ import argparse
 import configparser
 import os
 import torch
+import time
 import numpy as np
 import gym
 from crowd_nav.utils.explorer import Explorer
@@ -26,6 +27,7 @@ def main():
     parser.add_argument('--hallway', default=False, action='store_true')
     parser.add_argument('--video_file', type=str, default=None)
     parser.add_argument('--traj', default=False, action='store_true')
+
     args = parser.parse_args()
 
     if args.model_dir is not None:
@@ -48,25 +50,35 @@ def main():
     device = torch.device("cuda:1" if torch.cuda.is_available() and args.gpu else "cpu")
     logging.info('Using device: %s', device)
 
+    # Create the Gym environment
+    env = gym.make('CrowdSim-v0')
+    
     # configure policy
     policy = policy_factory[args.policy]()
+#     if not policy.trainable:
+#         parser.error('Policy has to be trainable')
+#     if args.policy_config is None:
+#         parser.error('Policy config has to be specified for a trainable network')
     policy_config = configparser.RawConfigParser()
-    policy_config.read(policy_config_file)
+    policy_config.read(args.policy_config)
     policy.configure(policy_config)
-    if policy.trainable:
-        if args.model_dir is None:
-            parser.error('Trainable policy must be specified with a model weights directory')
-        policy.get_model().load_state_dict(torch.load(model_weights))
 
     # configure environment
     env_config = configparser.RawConfigParser()
-    env_config.read(env_config_file)
+    env_config.read(args.env_config)
+    
     env = gym.make('CrowdSim-v0')
+    print("Gym environment created.")
+    
+    env.seed(123)
+    np.random.seed(123)
+    
     robot = Robot(env_config, 'robot')
     robot.set_policy(policy)
-    #robot.kinematics = 'unicycle'
+    
     env.set_robot(robot)
     env.configure(env_config)
+
     if args.square:
         env.test_sim = 'square_crossing'
     if args.circle:
@@ -75,9 +87,10 @@ def main():
         env.test_sim = 'hallway_crossing'
         
     explorer = Explorer(env, robot, device, gamma=0.9)
-    
+     
     policy.set_phase(args.phase)
     policy.set_device(device)
+
     # set safety space for ORCA in non-cooperative simulation
     if isinstance(robot.policy, ORCA):
         if robot.visible:
@@ -85,37 +98,60 @@ def main():
         else:
             robot.policy.safety_space = 0
         logging.info('ORCA agent buffer: %f', robot.policy.safety_space)
-
+ 
     policy.set_env(env)
     robot.print_info()
+    
     if args.visualize:
-        episodes = 0
-        while episodes < env.case_size[args.phase]:
-            print("Episode:", episodes)
-            ob = env.reset(args.phase, args.test_case)
+        while True:
+            ob = env.reset(args.phase, args.test_case, debug=True)
             done = False
-            last_pos = np.array(robot.get_position())
+            #last_pos = np.array(robot.get_position())
             while not done:
                 action = robot.act(ob)
-                action = [0.1, 0.1]
-                robot.kinematics = 'unicycle'
-                print(action)
-                ob, _, done, info = env.step(action)
-                current_pos = np.array(robot.get_position())
-                logging.debug('Speed: %.2f', np.linalg.norm(current_pos - last_pos) / robot.time_step)
-                last_pos = current_pos
-    #         if args.traj:
-    #             env.render('traj', args.video_file)
-    #         else:
-    #             env.render('video', args.video_file)
+                ob, _, done, info = env.step(action, update=True, debug=True, display_fps=50)
+                #current_pos = np.array(robot.get_position())
+                #logging.debug('Speed: %.2f', np.linalg.norm(current_pos - last_pos) / robot.time_step)
+                #last_pos = current_pos
+            #if args.traj:
+            #    env.render('traj', args.video_file)
+            #else:
+            #    env.render('video', args.video_file)
     
-            logging.info('It takes %.2f seconds to finish. Final status is %s', env.global_time, info)
-            if robot.visible and info == 'reach goal':
-                human_times = env.get_human_times()
-                logging.info('Average time for humans to reach goal: %.2f', sum(human_times) / len(human_times))
-            episodes += 1
+            #logging.info('It takes %.2f seconds to finish. Final status is %s', env.global_time, info)
+            #if robot.visible and info == 'reach goal':
+            #    human_times = env.get_human_times()
+            #    logging.info('Average time for humans to reach goal: %.2f', sum(human_times) / len(human_times))
     else:
         explorer.run_k_episodes(env.case_size[args.phase], args.phase, print_failure=True)
+    
+#     if args.visualize:
+#         episodes = 0
+#         ob = env.reset(args.phase, args.test_case, debug=True)
+# 
+#         while episodes < env.case_size[args.phase]:
+#             print("Episode:", episodes)
+#             done = False
+#             #last_pos = np.array(robot.get_position())
+#             #while not done:
+#                 #action = robot.act(ob)
+#             action = [1.0, 0.0]
+#             ob, _, done, info = env.step(action, update=True, debug=True, display_fps=10)
+#                 #current_pos = np.array(robot.get_position())
+#                 #logging.debug('Speed: %.2f', np.linalg.norm(current_pos - last_pos) / robot.time_step)
+#                 #last_pos = current_pos
+#     #         if args.traj:
+#     #             env.render('traj', args.video_file)
+#     #         else:
+#     #             env.render('video', args.video_file)
+#     
+#             #logging.info('It takes %.2f seconds to finish. Final status is %s', env.global_time, info)
+#             #if robot.visible and info == 'reach goal':
+#              #   human_times = env.get_human_times()
+#             #    logging.info('Average time for humans to reach goal: %.2f', sum(human_times) / len(human_times))
+#             episodes += 1
+#     else:
+#         explorer.run_k_episodes(env.case_size[args.phase], args.phase, print_failure=True)
 
 
 if __name__ == '__main__':

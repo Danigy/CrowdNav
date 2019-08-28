@@ -93,16 +93,12 @@ class SimpleNavigation():
             params['freespace'] = freespace_reward_weight = 0
             params['slack'] = slack_reward = -0.01
             potential_collision_reward_weight = 0
-            params['learning_rate'] = learning_rate = 0.001
-
+            params['learning_rate'] = learning_rate = 0.0005
             params['nn_layers'] = nn_layers= [512, 256, 128]
             gamma = 0.99
             decay = 0
             batch_norm = 'no'
 
-        # Create the Gym environment
-        env = gym.make(ENV_NAME)
-        
         # configure policy
         policy = policy_factory[args.policy]()
         if not policy.trainable:
@@ -154,7 +150,7 @@ class SimpleNavigation():
             os.exit(0)
 
         print("Holonomic?", HOLONOMIC)
-        model.learn(total_timesteps=100000)
+        model.learn(total_timesteps=500000)
         model.save(tb_log_dir + "/stable_baselines")
         print(">>>>> End testing <<<<<", self.string_to_filename(json.dumps(params)))
         print("Final weights saved at: ", tb_log_dir + "/stable_baselines.pkl")
@@ -166,15 +162,15 @@ class SimpleNavigation():
         
         # First layer.
         base_model['dense_1']      = Dense(nn_layers[0], activation='relu')(base_model['input'])
-        #base_model['batch_norm_1'] = BatchNormalization()(base_model['dense_1'])
+        base_model['batch_norm_1'] = BatchNormalization()(base_model['dense_1'])
         #base_model['dropout_1']    = Dropout(rate=0.2)(base_model['batch_norm_1'])
 
         # Second layer.
-        base_model['dense_2']      = Dense(nn_layers[1], kernel_initializer='lecun_uniform', activation='relu')(base_model['dense_1'])
-        #base_model['batch_norm_2'] = BatchNormalization()(base_model['dense_2'])
+        base_model['dense_2']      = Dense(nn_layers[1], kernel_initializer='lecun_uniform', activation='relu')(base_model['batch_norm_1'])
+        base_model['batch_norm_2'] = BatchNormalization()(base_model['dense_2'])
         #base_model['dropout_2']    = Dropout(rate=0.2)(base_model['batch_norm_2'])
         
-        base_model['dense_3']      = Dense(nn_layers[2], activation='relu')(base_model['dense_2'])
+        base_model['dense_3']      = Dense(nn_layers[2], activation='relu')(base_model['batch_norm_2'])
         
         # Output
         output = Dense(output_size, activation='linear')(base_model['dense_3'])
@@ -226,7 +222,7 @@ if __name__ == '__main__':
     
     class CustomPolicy(FeedForwardPolicy):
         def __init__(self, *args, **kwargs):
-            super(CustomPolicy, self).__init__(*args, layers=[512, 256, 128], layer_norm=False, feature_extraction="mlp", **kwargs)
+            super(CustomPolicy, self).__init__(*args, layers=[256, 128, 64], layer_norm=False, feature_extraction="mlp", **kwargs)
 
     if NN_TUNING:
         param_list = []

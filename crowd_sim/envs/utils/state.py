@@ -1,46 +1,50 @@
 class FullState(object):
-    def __init__(self, px, py, vx, vy, radius, personal_space, gx, gy, v_pref, theta):
+    def __init__(self, px, py, theta, vx, vy, vr, radius, personal_space, gx, gy, gr, v_pref):
         self.px = px
         self.py = py
+        self.theta = theta
         self.vx = vx
         self.vy = vy
+        self.vr = vr
         self.radius = radius
         self.personal_space = personal_space
         self.gx = gx
         self.gy = gy
+        self.gr = gr
         self.v_pref = v_pref
-        self.theta = theta
 
-        self.position = (self.px, self.py)
-        self.goal_position = (self.gx, self.gy)
-        self.velocity = (self.vx, self.vy)
+        self.position = (self.px, self.py, self.theta)
+        self.goal_position = (self.gx, self.gy, self.gr)
+        self.velocity = (self.vx, self.vy, self.vr)
 
     def __add__(self, other):
-        return other + (self.px, self.py, self.vx, self.vy, self.radius, self.personal_space, self.gx, self.gy, self.v_pref, self.theta)
+        return other + (self.px, self.py, self.theta, self.vx, self.vy, self.vr, self.radius, self.personal_space, self.gx, self.gy, self.gr, self.v_pref)
 
     def __str__(self):
-        return ' '.join([str(x) for x in [self.px, self.py, self.vx, self.vy, self.radius, self.personal_space, self.gx, self.gy,
-                                          self.v_pref, self.theta]])
+        return ' '.join([str(x) for x in [self.px, self.py, self.theta, self.vx, self.vy, self.vr, self.radius, self.personal_space, self.gx, self.gy, self.gr,
+                                          self.v_pref]])
 
 
 class ObservableState(object):
-    def __init__(self, px, py, vx, vy, radius, personal_space, theta=0.0):
+    def __init__(self, px, py, theta, vx, vy, vr, radius, personal_space):
         self.px = px
         self.py = py
+        self.theta = theta
         self.vx = vx
         self.vy = vy
+        self.vr = vr
         self.radius = radius
         self.personal_space = personal_space
-        self.theta = theta
 
         self.position = (self.px, self.py)
         self.velocity = (self.vx, self.vy)
+        self.pose = (self.px, self.py, self.theta)
 
     def __add__(self, other):
-        return other + (self.px, self.py, self.vx, self.vy, self.radius, self.personal_space, self.theta)
+        return other + (self.px, self.py, self.theta, self.vx, self.vy, self.vr, self.radius, self.personal_space)
 
     def __str__(self):
-        return ' '.join([str(x) for x in [self.px, self.py, self.vx, self.vy, self.radius, self.personal_space, self.theta]])
+        return ' '.join([str(x) for x in [self.px, self.py, self.theta, self.vx, self.vy, self.vr, self.radius, self.personal_space, self.theta]])
 
 
 class JointState(object):

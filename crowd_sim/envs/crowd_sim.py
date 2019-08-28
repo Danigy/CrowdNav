@@ -72,8 +72,9 @@ class CrowdSim(gym.Env):
         self.attention_weights = None
         
         self.n_sensors = 0
+        self.sensor_range = 25 # meters
         self.n_episodes = 0
-        
+                
         ''' 'OpenAI Gym Requirements '''
         self._seed(123)
         
@@ -115,6 +116,7 @@ class CrowdSim(gym.Env):
         self.discomfort_penalty_factor = config.getfloat('reward', 'discomfort_penalty_factor')
         self.draw_screen = config.getboolean('env', 'draw_screen')
         self.show_sensors = config.getboolean('env', 'show_sensors')
+        self.display_fps = config.getfloat('env', 'display_fps')
 
         if self.config.get('humans', 'policy') == 'orca':
             self.case_capacity = {'train': np.iinfo(np.uint32).max - 2000, 'val': 1000, 'test': 1000}
@@ -139,13 +141,11 @@ class CrowdSim(gym.Env):
         logging.info('Square width: {}, circle width: {}'.format(self.square_width, self.circle_radius))
         
        # ===== Begin Pymunk setup ===== #
-        self.display_fps = 1000
-
         self.scale_factor = 100
-        self.angle_offset = np.pi / 2
+        self.angle_offset = np.pi / 2.0
         
-        self.width = int(1.1 * self.square_width * self.scale_factor)
-        self.height = int(1.1 * self.square_width * self.scale_factor)
+        self.width = int(1.2 * self.square_width * self.scale_factor)
+        self.height = int(1.2 * self.square_width * self.scale_factor)
         
         #self.width = 1000
         #self.height = 1000
@@ -176,7 +176,7 @@ class CrowdSim(gym.Env):
         
         self.action_space = spaces.Box(-1.0, 1.0, shape=[2,])
         self.observation_space = spaces.Box(-1.0, 1.0, shape=[self.n_sensors + 2 + 4 * self.human_num,])
-
+        
     def set_robot(self, robot):
         self.robot = robot
 
@@ -216,7 +216,6 @@ class CrowdSim(gym.Env):
                     break
                 else:
                     prob -= value
-            self.human_num = human_num
             self.humans = []
             if static:
                 # randomly initialize static objects in a square of (width, height)
@@ -224,7 +223,7 @@ class CrowdSim(gym.Env):
                 height = 8
                 if human_num == 0:
                     human = Human(self.config, 'humans')
-                    human.set(0, -10, 0, -10, 0, 0, 0)
+                    human.set(0, -10, 0, 0, -10, 0, 0, 0, 0)
                     self.humans.append(human)
                 for i in range(human_num):
                     human = Human(self.config, 'humans')
@@ -242,7 +241,7 @@ class CrowdSim(gym.Env):
                                 break
                         if not collide:
                             break
-                    human.set(px, py, px, py, 0, 0, 0)
+                    human.set(px, py, 0, px, py, 0, 0, 0, 0)
                     self.humans.append(human)
             else:
                 # the first 2 two humans will be in the circle crossing scenarios
@@ -286,7 +285,7 @@ class CrowdSim(gym.Env):
                     break
             if not collide:
                 break
-        human.set(px, py, -px, -py, 0, 0, 0)
+        human.set(px, py, 0, -px, -py, 0, 0, 0, 0)
         return human
 
     def generate_square_crossing_human(self):
@@ -318,7 +317,7 @@ class CrowdSim(gym.Env):
                     break
             if not collide:
                 break
-        human.set(px, py, gx, gy, 0, 0, 0)
+        human.set(px, py, 0, gx, gy, 0, 0, 0, 0)
         return human
     
     def generate_hallway_crossing_human(self):
@@ -352,7 +351,7 @@ class CrowdSim(gym.Env):
                     break
             if not collide:
                 break
-        human.set(px, py, gx, gy, 0, 0, 0)
+        human.set(px, py, 0, gx, gy, 0, 0, 0, 0)
         return human
 
     def get_human_times(self):
@@ -397,24 +396,27 @@ class CrowdSim(gym.Env):
         del sim
         return self.human_times
     
-    def _get_state(self, action=None):
+    def _get_state(self):
         state = []
-
-        if action is None:
-            if self.robot.kinematics == 'holonomic':
-                action = ActionXY(0.0, 0.0)
-            else:
-                action = ActionRot(0.0, 0.0)
 
         if self.robot.kinematics == 'holonomic':
             gx = self.robot.gx - self.robot.px
             gy = self.robot.gy - self.robot.py
         else:
-            gx = self.robot.gx - self.robot.px * np.cos(action.r + self.robot.theta)
-            gy = self.robot.gy - self.robot.py * np.sin(action.r + self.robot.theta)
+            gx = self.robot.gx - self.robot.px
+            gy = self.robot.gy - self.robot.py
+            
+            cos_theta = np.cos(-self.robot.theta)
+            sin_theta = np.sin(-self.robot.theta)
+                
+            gx_rotated = gx * cos_theta - gy * sin_theta
+            gy_rotated = gx * sin_theta + gy * cos_theta
+            
+            gx = gx_rotated
+            gy = gy_rotated
 
-        state.append(gx)
-        state.append(gy)
+        state.append(gx / self.sensor_range)
+        state.append(gy / self.sensor_range)
         
         for i, human in enumerate(self.humans):
             if self.robot.kinematics == 'holonomic':
@@ -423,24 +425,36 @@ class CrowdSim(gym.Env):
                 vx = human.vx - self.robot.vx
                 vy = human.vy - self.robot.vy
             else:
-                px = human.px - self.robot.px * np.cos(action.r + self.robot.theta)
-                py = human.py - self.robot.py * np.sin(action.r + self.robot.theta)
-                vx = human.vx - action.v * np.cos(action.r + self.robot.theta)
-                vy = human.vy - action.v * np.sin(action.r + self.robot.theta)
+                px = human.px - self.robot.px
+                py = human.py - self.robot.py
                 
-            state.append(px)
-            state.append(py)
-            state.append(vx)
-            state.append(vy)
+                px_rotated = px * cos_theta - py * sin_theta
+                py_rotated = px * sin_theta + py * cos_theta
+                
+                px = px_rotated
+                py = py_rotated
+
+                vx_rel = human.vx - self.robot.vx
+                vy_rel = human.vy - self.robot.vy
+                
+                vx_rotated = vx_rel * cos_theta - vy_rel * sin_theta
+                vy_rotated = vx_rel * sin_theta + vy_rel * cos_theta
+                
+                vx = vx_rotated
+                vy = vy_rotated
+                
+            #print(self.robot.theta, np.sqrt(vx**2 + vy**2), px, py, gx, gy, vx, vy)
+                
+            state.append(px / self.sensor_range)
+            state.append(py / self.sensor_range)
+            state.append(vx / self.robot.max_linear_velocity)
+            state.append(vy / self.robot.max_linear_velocity)
             
-            if self.draw_screen:
-                pygame_px = self.scale_factor * human.px + self.width / 2.0
-                pygame_py = self.scale_factor * human.py + self.height / 2.0
-                
-                delta_px = 3 * self.scale_factor * vx + pygame_px
-                delta_py = 3 * self.scale_factor * vy + pygame_py
-    
-                pygame.draw.lines(self.surface, (0, 255, 0), False, [Vec2d(pygame_px, self.screen_y(pygame_py)), Vec2d(delta_px, self.screen_y(delta_py))], 3)
+#             if self.draw_screen:
+#                 rel_vel = Vec2d(vx_rel, vy_rel)                
+#                 rel_pos = self.robot_body.position + 2 * self.scale_factor * rel_vel
+#     
+#                 pygame.draw.lines(self.surface, (0, 255, 0), False, [Vec2d(self.robot_body.position[0], self.screen_y(self.robot_body.position[1])), Vec2d(rel_pos[0], self.screen_y(rel_pos[1]))], 3)
 
         return np.array(state)
         
@@ -448,7 +462,7 @@ class CrowdSim(gym.Env):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
-    def reset(self, phase='test', test_case=None):
+    def reset(self, phase='test', test_case=None, debug=False):
         """
         Set px, py, gx, gy, vx, vy, theta for robot and humans
         :return:
@@ -478,7 +492,7 @@ class CrowdSim(gym.Env):
             gx = np.random.random() * self.hallway_width * 0.5
             gy = self.square_width * 0.5
             
-            self.robot.set(px, py, gx, gy, 0, 0, np.pi / 2)
+            self.robot.set(px, py, 0, gx, gy, 0, 0, 0, np.pi/2)
 
             if self.case_counter[phase] >= 0:
                 np.random.seed(counter_offset[phase] + self.case_counter[phase])
@@ -519,22 +533,30 @@ class CrowdSim(gym.Env):
 
         state = self._get_state()
         
-        return state
+        if debug:
+            return ob
+        else:
+            return state
 
-    def onestep_lookahead(self, action):
-        return self.step(action, update=False)
+    def onestep_lookahead(self, action, debug=False, draw_screen=None, display_fps=None):
+        return self.step(action, update=False, debug=debug, draw_screen=None, display_fps=None)
 
-    def step(self, action, update=True):
+    def step(self, action, update=True, debug=False, draw_screen=None, display_fps=None):
         """
         Compute actions for all agents, detect collision, update environment and return (ob, reward, done, info)
 
         """
+        self.draw_screen = draw_screen if draw_screen is not None else self.draw_screen
+        self.display_fps = display_fps if display_fps is not None else self.display_fps
 
-        #if self.robot.kinematics == 'holonomic':
-        #    action = ActionXY(0.0, 0.0)
-        #else:
-        #    action = ActionRot(1.0, 0.1)            
-
+        if self.robot.kinematics != 'holonomic':
+            action = ActionRot((action[0] + 1.0) / 2.0, action[1])
+            
+#         if self.robot.kinematics == 'holonomic':
+#             action = ActionXY(1.0, 0.0)
+#         else:
+#             action = ActionRot(1.0, 0.1)
+        
         self.n_episodes += 1
         
         if self.robot.kinematics == 'holonomic':
@@ -590,7 +612,7 @@ class CrowdSim(gym.Env):
         if self.draw_screen:
             pygame_gx = int(self.scale_factor * self.robot.gx + self.width / 2.0)
             pygame_gy = int(self.scale_factor * self.robot.gy + self.height / 2.0)                
-            pygame.draw.circle(self.surface, (0, 255, 0, 200), (pygame_gx, self.screen_y(pygame_gy)), 20)                
+            pygame.draw.circle(self.surface, (0, 255, 0, 200), (pygame_gx, self.screen_y(pygame_gy)), 30)                
             
             pygame_px = int(self.scale_factor * self.robot.px + self.width/2)
             pygame_py = int(self.scale_factor * self.robot.py + self.height/2)
@@ -598,15 +620,24 @@ class CrowdSim(gym.Env):
             self.robot_body.position = Vec2d(pygame_px, pygame_py)
             self.robot_body.angle = self.robot.theta
             
-            pygame.draw.circle(self.surface, (255, 255, 255, 30), (pygame_px, self.screen_y(pygame_py)), int(self.scale_factor * self.robot.personal_space))
+            pygame.draw.circle(self.surface, (255, 255, 255, 40), (pygame_px, self.screen_y(pygame_py)), int(self.scale_factor * self.robot.personal_space))
             
             index = 0
+            
             for human in self.humans:
                 human_state = human.get_full_state()
+                
                 pygame_px = int(self.scale_factor * human_state.px + self.width/2)
                 pygame_py = int(self.scale_factor * human_state.py + self.height/2)
+                
                 self.pedestrians[index][0].position = Vec2d(pygame_px, pygame_py)
-                pygame.draw.circle(self.surface, (255, 255, 255, 30), (pygame_px, self.screen_y(pygame_py)), int(self.scale_factor * human.personal_space))
+                
+                pygame.draw.circle(self.surface, (255, 255, 255, 40), (pygame_px, self.screen_y(pygame_py)), int(self.scale_factor * human.personal_space))
+                
+                pygame_gx = int(self.scale_factor * human_state.gx + self.width/2)
+                pygame_gy = int(self.scale_factor * human_state.gy + self.height/2)
+                pygame.draw.circle(self.surface, (255, 0, 0, 200), (pygame_gx, self.screen_y(pygame_gy)), 10)                
+
                 index += 1
             
             self.space.debug_draw(self.draw_options)
@@ -617,11 +648,14 @@ class CrowdSim(gym.Env):
             self.surface.fill(THECOLORS["black"])
             
         # Convert Observable state to numpy state
-        state = self._get_state(action)
+        state = self._get_state()
 
         #print(state)
 
-        return state, reward, done, info
+        if debug:
+            return ob, reward, done, info
+        else:
+            return state, reward, done, info
 
     def _get_reward(self, action):
         # collision detection
@@ -630,12 +664,14 @@ class CrowdSim(gym.Env):
         for i, human in enumerate(self.humans):
             px = human.px - self.robot.px
             py = human.py - self.robot.py
+            
             if self.robot.kinematics == 'holonomic':
                 vx = human.vx - action.vx
                 vy = human.vy - action.vy
             else:
                 vx = human.vx - action.v * np.cos(action.r + self.robot.theta)
                 vy = human.vy - action.v * np.sin(action.r + self.robot.theta)
+                
             ex = px + vx * self.time_step
             ey = py + vy * self.time_step
 
@@ -661,9 +697,9 @@ class CrowdSim(gym.Env):
 
         # check if reaching the goal
         end_position = np.array(self.robot.compute_position(action, self.time_step))
-        reaching_goal = norm(end_position - np.array(self.robot.get_goal_position())) < self.robot.radius
+        reaching_goal = norm(end_position - np.array(self.robot.get_goal_position())) < 2.0 * self.robot.radius
 
-        reward = 0
+        reward = -0.001 # slack reward
         done = False
         info = dict()
         
@@ -680,7 +716,7 @@ class CrowdSim(gym.Env):
             done = True
             info['status'] = 'success'
         elif dmin < self.discomfort_dist:
-            # only penalize agent for getting too close if it's visible
+            # penalize agent for getting too close
             # adjust the reward based on FPS
             reward = (dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
             done = False
