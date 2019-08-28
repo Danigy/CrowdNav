@@ -53,6 +53,7 @@ class CrowdSim(gym.Env):
         # reward function
         self.success_reward = None
         self.collision_penalty = None
+        self.time_to_collision_penalty = None        
         self.discomfort_dist = None
         self.discomfort_penalty_factor = None
         # simulation configuration
@@ -111,6 +112,7 @@ class CrowdSim(gym.Env):
         self.randomize_attributes = config.getboolean('env', 'randomize_attributes')
         self.success_reward = config.getfloat('reward', 'success_reward')
         self.collision_penalty = config.getfloat('reward', 'collision_penalty')
+        self.time_to_collision_penalty = config.getfloat('reward', 'time_to_collision_penalty')        
         self.potential_reward_weight = config.getfloat('reward', 'potential_reward_weight')        
         self.discomfort_dist = config.getfloat('reward', 'discomfort_dist')
         self.discomfort_penalty_factor = config.getfloat('reward', 'discomfort_penalty_factor')
@@ -549,21 +551,13 @@ class CrowdSim(gym.Env):
         self.draw_screen = draw_screen if draw_screen is not None else self.draw_screen
         self.display_fps = display_fps if display_fps is not None else self.display_fps
 
-        if self.robot.kinematics != 'holonomic':
+        if self.robot.kinematics == 'holonomic':
+            action = ActionXY(action[0], action[1])                        
+        else:
             action = ActionRot((action[0] + 1.0) / 2.0, action[1])
             
-#         if self.robot.kinematics == 'holonomic':
-#             action = ActionXY(1.0, 0.0)
-#         else:
-#             action = ActionRot(1.0, 0.1)
-        
         self.n_episodes += 1
         
-        if self.robot.kinematics == 'holonomic':
-            action = ActionXY(action[0], action[1])
-        else:
-            action = ActionRot(action[0], action[1])
-
         human_actions = []
 
         for human in self.humans:
@@ -577,6 +571,8 @@ class CrowdSim(gym.Env):
         reward, done, info = self._get_reward(action)
 
         if update:
+            #self.test_update_without_robot()
+            
             # store state, action value and attention weights
             self.states.append([self.robot.get_full_state(), [human.get_full_state() for human in self.humans]])
             if hasattr(self.robot.policy, 'action_values'):
@@ -612,8 +608,7 @@ class CrowdSim(gym.Env):
         if self.draw_screen:
             pygame_gx = int(self.scale_factor * self.robot.gx + self.width / 2.0)
             pygame_gy = int(self.scale_factor * self.robot.gy + self.height / 2.0)                
-            pygame.draw.circle(self.surface, (0, 255, 0, 200), (pygame_gx, self.screen_y(pygame_gy)), 30)                
-            
+            pygame.draw.circle(self.surface, (0, 255, 0, 200), (pygame_gx, self.screen_y(pygame_gy)), 30)                           
             pygame_px = int(self.scale_factor * self.robot.px + self.width/2)
             pygame_py = int(self.scale_factor * self.robot.py + self.height/2)
             
@@ -657,14 +652,39 @@ class CrowdSim(gym.Env):
         else:
             return state, reward, done, info
 
+    def test_update_without_robot(self):
+            # store state, action value and attention weights
+            self.states.append([self.robot.get_full_state(), [human.get_full_state() for human in self.humans]])
+            if hasattr(self.robot.policy, 'action_values'):
+                self.action_values.append(self.robot.policy.action_values)
+            if hasattr(self.robot.policy, 'get_attention_weights'):
+                self.attention_weights.append(self.robot.policy.get_attention_weights())
+
+            # store current positions and velocities of all non-robot agents
+            self.human_positions = []
+            self.human_velocities = []            
+
+            for i in range(len(self.humans)):
+                self.human_positions[i] = [self.humans[i].px, self.humans[i].py, self.humans[i].theta]
+                self.human_velocities[i] = [self.humans[i].vx, self.humans[i].vy, self.humans[i].vr]                
+            
+            # update all non-robot agents
+            for i, human_action in enumerate(human_actions):
+                self.humans[i].step(human_action)        
+
     def _get_reward(self, action):
+        if self.robot.kinematics == 'holonomic':
+            action = ActionXY(action[0], action[1])
+        else:
+            action = ActionRot(action[0], action[1])
+            
         # collision detection
         dmin = float('inf')
         collision = False
         for i, human in enumerate(self.humans):
             px = human.px - self.robot.px
             py = human.py - self.robot.py
-            
+
             if self.robot.kinematics == 'holonomic':
                 vx = human.vx - action.vx
                 vy = human.vy - action.vy
@@ -695,6 +715,33 @@ class CrowdSim(gym.Env):
                     # detect collision but don't take humans' collision into account
                     logging.debug('Collision happens between humans in step()')
 
+        # check if the robot is cutting off a pedestrian
+        time_to_collision_danger = False
+        for i, human in enumerate(self.humans):
+            dx = self.humans[i].px - self.robot.px
+            dy = self.humans[i].py - self.robot.py
+            
+            dist = np.sqrt(dx**2 + dy**2) - self.humans[i].radius - self.robot.radius
+            
+            if self.robot.kinematics == 'holonomic':
+                vx = human.vx - self.robot.vx
+                vy = human.vy - self.robot.vy
+            else:
+                raise NotImplementedError
+
+            v = np.sqrt(vx**2 + vy**2)
+
+            v_projection = (vx * px + vy * py) / dist # v dot p over ||p||
+
+            time_to_collision = dist / (v_projection + 0.0001)
+
+            if time_to_collision < 0:
+                time_to_collision = np.inf
+
+            if time_to_collision < 2.0:
+                time_to_collision_danger = True
+                break
+
         # check if reaching the goal
         end_position = np.array(self.robot.compute_position(action, self.time_step))
         reaching_goal = norm(end_position - np.array(self.robot.get_goal_position())) < 2.0 * self.robot.radius
@@ -721,6 +768,10 @@ class CrowdSim(gym.Env):
             reward = (dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
             done = False
             info['status'] = 'unsafe'
+        elif time_to_collision_danger:
+            reward = self.time_to_collision_penalty
+            done = False
+            info['status'] = 'time_to_collision'            
         else:
             done = False
             info['status'] = 'nothing'            
