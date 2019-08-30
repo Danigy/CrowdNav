@@ -57,6 +57,7 @@ class CrowdSim(gym.Env):
         self.time_to_collision_penalty = None        
         self.discomfort_dist = None
         self.discomfort_penalty_factor = None
+        self.lookahead_interval = 2.0
         # simulation configuration
         self.config = None
         self.case_capacity = None
@@ -586,7 +587,7 @@ class CrowdSim(gym.Env):
         reward, done, info = self._get_reward(action)
 
         if update:
-            #self.test_update_without_robot()
+            #self.update_without_robot()
             
             # store state, action value and attention weights
             self.states.append([self.robot.get_full_state(), [human.get_full_state() for human in self.humans]])
@@ -641,8 +642,27 @@ class CrowdSim(gym.Env):
                 pygame_py = int(self.scale_factor * human_state.py + self.height/2)
                 
                 self.pedestrians[index][0].position = Vec2d(pygame_px, pygame_py)
-                
+
                 pygame.draw.circle(self.surface, (255, 255, 255, 40), (pygame_px, self.screen_y(pygame_py)), int(self.scale_factor * human.personal_space))
+
+                # Show the elongation of the personal space in the direction of motion
+                px = human_state.px - self.robot.px
+                py = human_state.py - self.robot.py
+
+                if self.robot.kinematics == 'holonomic':
+                    vx = human_state.vx
+                    vy = human_state.vy
+                else:
+                    raise NotImplementedError
+            
+                ex = human_state.px + vx * self.lookahead_interval
+                ey = human_state.py + vy * self.lookahead_interval
+
+                pygame_ex = int(self.scale_factor * ex + self.width/2)
+                pygame_ey = int(self.scale_factor * ey + self.height/2)
+                
+                pygame.draw.lines(self.surface, (0, 255, 0), False, [Vec2d(pygame_px, self.screen_y(pygame_py)),
+                                  Vec2d(pygame_ex, self.screen_y(pygame_ey))], 3)                
                 
 #                 ellipse_left = pygame_px - int(self.scale_factor * human.personal_space/2)
 #                 ellipse_top = self.screen_y(pygame_py + int(self.scale_factor * human.personal_space/2))
@@ -680,7 +700,7 @@ class CrowdSim(gym.Env):
         else:
             return state, reward, done, info
 
-    def test_update_without_robot(self):
+    def update_without_robot(self):
             # store state, action value and attention weights
             self.states.append([self.robot.get_full_state(), [human.get_full_state() for human in self.humans]])
             if hasattr(self.robot.policy, 'action_values'):
@@ -746,7 +766,7 @@ class CrowdSim(gym.Env):
                     # detect collision but don't take humans' collision into account
                     logging.debug('Collision happens between humans in step()')
                     
-        # velocity projection to detect "cutting off"
+        # velocity projection to detect "cutting someone off"
         velocity_dmin = float('inf')
         cutting_off = False
         
@@ -754,18 +774,19 @@ class CrowdSim(gym.Env):
             px = human.px - self.robot.px
             py = human.py - self.robot.py
 
-            if self.robot.kinematics == 'holonomic':
-                vx = human.vx - action.vx
-                vy = human.vy - action.vy
-            else:
-                vx = human.vx - action.v * np.cos(action.r + self.robot.theta)
-                vy = human.vy - action.v * np.sin(action.r + self.robot.theta)
+            # if self.robot.kinematics == 'holonomic':
+            #     vx = human.vx - action.vx
+            #     vy = human.vy - action.vy
+            # else:
+            #     vx = human.vx - action.v * np.cos(action.r + self.robot.theta)
+            #     vy = human.vy - action.v * np.sin(action.r + self.robot.theta)
             
-            lookahead_time = 1.0
-            
-            ex = px + vx * lookahead_time
-            ey = py + vy * lookahead_time
+            # ex = px + vx * self.lookahead_interval
+            # ey = py + vy * self.lookahead_interval
 
+            ex = human.px + human.vx * self.lookahead_interval - self.robot.px
+            ey = human.py + human.vy * self.lookahead_interval - self.robot.py
+            
             # project motion ahead lookahead_time seconds
             velocity_dist = point_to_segment_dist(px, py, ex, ey, 0, 0) - human.radius - self.robot.radius
 
