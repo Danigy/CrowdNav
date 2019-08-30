@@ -32,6 +32,7 @@ from pymunk.pygame_util import DrawOptions
 from pymunk.space_debug_draw_options import SpaceDebugDrawOptions, SpaceDebugColor
 
 import random
+import math
 
 class CrowdSim(gym.Env):
     metadata = {'render.modes': ['human']}
@@ -147,7 +148,7 @@ class CrowdSim(gym.Env):
         self.angle_offset = np.pi / 2.0
         
         self.width = int(1.2 * self.square_width * self.scale_factor)
-        self.height = int(1.2 * self.square_width * self.scale_factor)
+        self.height = int(0.9 * self.square_width * self.scale_factor)
         
         #self.width = 1000
         #self.height = 1000
@@ -157,7 +158,10 @@ class CrowdSim(gym.Env):
         
         else:
             self.screen = pygame.display.set_mode((self.width, self.height))
+            self.screen_rect = self.screen.get_rect()
             self.surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            self.surface2 = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            self.rect_surface2 = self.surface2.get_rect(center=(0,0))
             self.draw_options = DrawOptions(self.screen)
             self.draw_options.flags = 3
 
@@ -487,12 +491,23 @@ class CrowdSim(gym.Env):
         else:
             counter_offset = {'train': self.case_capacity['val'] + self.case_capacity['test'],
                               'val': 0, 'test': self.case_capacity['val']}
-                        
-            px = np.random.random() * self.hallway_width * 0.5
-            py = -self.square_width * 0.5
+
+            if np.random.random() > 0.5:
+                sign = -1
+            else:
+                sign = 1
+                
+            px = np.random.random() * self.square_width * 0.2 * sign
             
-            gx = np.random.random() * self.hallway_width * 0.5
-            gy = self.square_width * 0.5
+            if np.random.random() > 0.5:
+                sign = -1
+            else:
+                sign = 1           
+            
+            py = -self.square_width * 0.35
+            
+            gx = np.random.random() * self.square_width * 0.2 * sign
+            gy = self.square_width * 0.35
             
             self.robot.set(px, py, 0, gx, gy, 0, 0, 0, np.pi/2)
 
@@ -629,6 +644,18 @@ class CrowdSim(gym.Env):
                 
                 pygame.draw.circle(self.surface, (255, 255, 255, 40), (pygame_px, self.screen_y(pygame_py)), int(self.scale_factor * human.personal_space))
                 
+#                 ellipse_left = pygame_px - int(self.scale_factor * human.personal_space/2)
+#                 ellipse_top = self.screen_y(pygame_py + int(self.scale_factor * human.personal_space/2))
+#                 
+#                 ellipse_rect = pygame.Rect(ellipse_left, ellipse_top, int(1.2 * self.scale_factor * human.personal_space), int(self.scale_factor * human.personal_space))
+# 
+#                 pygame.draw.ellipse(self.surface2, (255, 255, 255, 40), ellipse_rect)
+#                 
+#                 rotated_surface = pygame.transform.rotate(self.surface2, 45)
+#                 rotated_rect = rotated_surface.get_rect()
+#                 rotated_rect.clamp_ip(self.screen_rect)
+#                 self.screen.blit(rotated_surface, self.rect_surface2.center)
+                
                 pygame_gx = int(self.scale_factor * human_state.gx + self.width/2)
                 pygame_gy = int(self.scale_factor * human_state.gy + self.height/2)
                 pygame.draw.circle(self.surface, (255, 0, 0, 200), (pygame_gx, self.screen_y(pygame_gy)), 10)                
@@ -641,6 +668,7 @@ class CrowdSim(gym.Env):
             self.clock.tick(self.display_fps)
             self.screen.fill(THECOLORS["black"])
             self.surface.fill(THECOLORS["black"])
+            #self.surface2.fill(THECOLORS["black"])
             
         # Convert Observable state to numpy state
         state = self._get_state()
@@ -681,6 +709,7 @@ class CrowdSim(gym.Env):
         # collision detection
         dmin = float('inf')
         collision = False
+        
         for i, human in enumerate(self.humans):
             px = human.px - self.robot.px
             py = human.py - self.robot.py
@@ -697,10 +726,12 @@ class CrowdSim(gym.Env):
 
             # closest distance between boundaries of two agents
             closest_dist = point_to_segment_dist(px, py, ex, ey, 0, 0) - human.radius - self.robot.radius
+            
             if closest_dist < 0:
                 collision = True
                 # logging.debug("Collision: distance between robot and p{} is {:.2E}".format(i, closest_dist))
                 break
+            
             elif closest_dist < dmin:
                 dmin = closest_dist
 
@@ -714,41 +745,68 @@ class CrowdSim(gym.Env):
                 if dist < 0:
                     # detect collision but don't take humans' collision into account
                     logging.debug('Collision happens between humans in step()')
-
-        # check if the robot is cutting off a pedestrian
-        time_to_collision_danger = False
+                    
+        # velocity projection to detect "cutting off"
+        velocity_dmin = float('inf')
+        cutting_off = False
+        
         for i, human in enumerate(self.humans):
-            dx = self.humans[i].px - self.robot.px
-            dy = self.humans[i].py - self.robot.py
-            
-            dist = np.sqrt(dx**2 + dy**2) - self.humans[i].radius - self.robot.radius
-            
+            px = human.px - self.robot.px
+            py = human.py - self.robot.py
+
             if self.robot.kinematics == 'holonomic':
-                vx = human.vx - self.robot.vx
-                vy = human.vy - self.robot.vy
+                vx = human.vx - action.vx
+                vy = human.vy - action.vy
             else:
-                raise NotImplementedError
+                vx = human.vx - action.v * np.cos(action.r + self.robot.theta)
+                vy = human.vy - action.v * np.sin(action.r + self.robot.theta)
+            
+            lookahead_time = 1.0
+            
+            ex = px + vx * lookahead_time
+            ey = py + vy * lookahead_time
 
-            v = np.sqrt(vx**2 + vy**2)
+            # project motion ahead lookahead_time seconds
+            velocity_dist = point_to_segment_dist(px, py, ex, ey, 0, 0) - human.radius - self.robot.radius
 
-            v_projection = (vx * px + vy * py) / dist # v dot p over ||p||
+            if velocity_dist < velocity_dmin:
+                velocity_dmin = velocity_dist
 
-            time_to_collision = dist / (v_projection + 0.0001)
-
-            if time_to_collision < 0:
-                time_to_collision = np.inf
-
-            if time_to_collision < 2.0:
-                time_to_collision_danger = True
-                break
+#         # check if the robot is cutting off a pedestrian
+#         time_to_collision_danger = False
+#         for i, human in enumerate(self.humans):
+#             dx = self.humans[i].px - self.robot.px
+#             dy = self.humans[i].py - self.robot.py
+#             
+#             dist = np.sqrt(dx**2 + dy**2) - self.humans[i].radius - self.robot.radius
+#             
+#             if self.robot.kinematics == 'holonomic':
+#                 vx = human.vx - self.robot.vx
+#                 vy = human.vy - self.robot.vy
+#             else:
+#                 raise NotImplementedError
+# 
+#             v = np.sqrt(vx**2 + vy**2)
+# 
+#             v_projection = (vx * px + vy * py) / dist # v dot p over ||p||
+# 
+#             time_to_collision = dist / (v_projection + 0.0001)
+# 
+#             if time_to_collision < 0:
+#                 time_to_collision = float('inf')
+# 
+#             if time_to_collision < 2.0:
+#                 time_to_collision_danger = True
+#                 break
 
         # check if reaching the goal
         end_position = np.array(self.robot.compute_position(action, self.time_step))
         reaching_goal = norm(end_position - np.array(self.robot.get_goal_position())) < 2.0 * self.robot.radius
 
-        reward = -0.001 # slack reward
         done = False
         info = dict()
+        
+        reward = 0
         
         if self.global_time >= self.time_limit - 1:
             reward = 0
@@ -762,19 +820,23 @@ class CrowdSim(gym.Env):
             reward = self.success_reward
             done = True
             info['status'] = 'success'
-        elif dmin < self.discomfort_dist:
+        elif velocity_dmin < self.discomfort_dist:
             # penalize agent for getting too close
             # adjust the reward based on FPS
-            reward = (dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
+            reward = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
             done = False
             info['status'] = 'unsafe'
-        elif time_to_collision_danger:
-            reward = self.time_to_collision_penalty
-            done = False
-            info['status'] = 'time_to_collision'            
+#         elif time_to_collision_danger:
+#             reward = self.time_to_collision_penalty
+#             done = False
+#             info['status'] = 'time_to_collision'            
         else:
             done = False
-            info['status'] = 'nothing'            
+            info['status'] = 'nothing'
+            
+        if not done:
+            reward += -0.001 # slack reward
+
             
         # Get initial goal potential and collision potential
         if not done:
@@ -984,6 +1046,40 @@ class CrowdSim(gym.Env):
                 plt.show()
         else:
             raise NotImplementedError
+        
+    def distance_to_ellipse(self, semi_major, semi_minor, p):  
+        px = abs(p[0])
+        py = abs(p[1])
+    
+        tx = 0.707
+        ty = 0.707
+    
+        a = semi_major
+        b = semi_minor
+    
+        for x in range(0, 3):
+            x = a * tx
+            y = b * ty
+    
+            ex = (a*a - b*b) * tx**3 / a
+            ey = (b*b - a*a) * ty**3 / b
+    
+            rx = x - ex
+            ry = y - ey
+    
+            qx = px - ex
+            qy = py - ey
+    
+            r = math.hypot(ry, rx)
+            q = math.hypot(qy, qx)
+    
+            tx = min(1, max(0, (qx * r / q + ex) / a))
+            ty = min(1, max(0, (qy * r / q + ey) / b))
+            t = math.hypot(ty, tx)
+            tx /= t 
+            ty /= t 
+
+        return (math.copysign(a * tx, p[0]), math.copysign(b * ty, p[1]))
 
     def collision_begin(self, space, arbiter, data):
         self.crashed = True
@@ -995,6 +1091,14 @@ class CrowdSim(gym.Env):
     
     def screen_y(self, y):
         return self.height - y
+    
+    def rot_center(self, image, angle):
+    
+        center = image.get_rect().center
+        rotated_image = pygame.transform.rotate(image, angle)
+        new_rect = rotated_image.get_rect(center = center)
+    
+        return rotated_image, new_rect
         
 if __name__ == '__main__':
     cs = CrowdSim()

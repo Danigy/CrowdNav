@@ -93,7 +93,7 @@ class SimpleNavigation():
             params['freespace'] = freespace_reward_weight = 0
             params['slack'] = slack_reward = -0.01
             potential_collision_reward_weight = 0
-            params['learning_rate'] = learning_rate = 0.001
+            params['learning_rate'] = learning_rate = 0.0001
             params['nn_layers'] = nn_layers= [512, 256, 128]
             gamma = 0.99
             decay = 0
@@ -138,7 +138,7 @@ class SimpleNavigation():
 
         weights_path = os.path.join(tb_log_dir, "model_weights.{epoch:02d}.h5")
  
-        model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate,  buffer_size=50000)
+        model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate,  buffer_size=500000)
         
         if args.test:
             print("Testing!")
@@ -149,11 +149,14 @@ class SimpleNavigation():
                 obs, rewards, dones, info = env.step(action)
             os.exit(0)
 
-        print("Holonomic?", HOLONOMIC)
-        model.learn(total_timesteps=100000)
+        #print("Holonomic?", HOLONOMIC)
+        model.learn(total_timesteps=5000000)
         model.save(tb_log_dir + "/stable_baselines")
         print(">>>>> End testing <<<<<", self.string_to_filename(json.dumps(params)))
         print("Final weights saved at: ", tb_log_dir + "/stable_baselines.pkl")
+        
+        print("TEST COMMAND: python3 py3_learning.py --test --weights ", tb_log_dir + "/stable_baselines.pkl")
+
 
     
     def create_base_lidar_model(self, input_size, output_size, nn_layers):
