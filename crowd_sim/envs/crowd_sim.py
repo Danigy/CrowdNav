@@ -571,10 +571,15 @@ class CrowdSim(gym.Env):
         if self.robot.kinematics == 'holonomic':
             action = ActionXY(action[0], action[1])                        
         else:
+            # Only allow forward motion and rotations
             action = ActionRot((action[0] + 1.0) / 2.0, action[1])
             
         self.n_episodes += 1
-        
+
+        # Update the humans without the robot, save the results, and restore the original human states
+        self.update_without_robot()
+
+        # Now proceed with a regular update with the robot
         human_actions = []
 
         for human in self.humans:
@@ -585,11 +590,9 @@ class CrowdSim(gym.Env):
                 ob += [self.robot.get_observable_state()]
             human_actions.append(human.act(ob))
 
-        reward, done, info = self._get_reward(action)
+        reward, done, info = self._get_reward_invisible_robot(action)
 
-        if update:
-            #self.update_without_robot()
-            
+        if update:            
             # store state, action value and attention weights
             self.states.append([self.robot.get_full_state(), [human.get_full_state() for human in self.humans]])
             if hasattr(self.robot.policy, 'action_values'):
@@ -702,24 +705,41 @@ class CrowdSim(gym.Env):
             return state, reward, done, info
 
     def update_without_robot(self):
-            # store state, action value and attention weights
-            self.states.append([self.robot.get_full_state(), [human.get_full_state() for human in self.humans]])
-            if hasattr(self.robot.policy, 'action_values'):
-                self.action_values.append(self.robot.policy.action_values)
-            if hasattr(self.robot.policy, 'get_attention_weights'):
-                self.attention_weights.append(self.robot.policy.get_attention_weights())
+        # store current positions and velocities of all humans
+        original_human_states = self.get_human_states()
 
-            # store current positions and velocities of all non-robot agents
-            self.human_positions = []
-            self.human_velocities = []            
-
-            for i in range(len(self.humans)):
-                self.human_positions[i] = [self.humans[i].px, self.humans[i].py, self.humans[i].theta]
-                self.human_velocities[i] = [self.humans[i].vx, self.humans[i].vy, self.humans[i].vr]                
+        human_actions = []
+        
+        for human in self.humans:
+            # observation for humans is always coordinates
+            ob = [other_human.get_observable_state() for other_human in self.humans if other_human != human]
+            human_actions.append(human.act(ob))
             
-            # update all non-robot agents
-            for i, human_action in enumerate(human_actions):
-                self.humans[i].step(human_action)        
+        # do a trial update without the robot moving
+        for i, human_action in enumerate(human_actions):
+            self.humans[i].step(human_action)
+
+        # store the updated states
+        self.human_position_updates_without_robot, self.human_velocity_updates_without_robot = self.get_human_states()
+        
+        # restore the original states
+        positions, velocities = original_human_states
+        self.set_human_states(positions, velocities)
+
+    def get_human_states(self):
+        human_positions = []
+        human_velocities = []            
+
+        for i in range(len(self.humans)):
+            human_positions.append([self.humans[i].px, self.humans[i].py, self.humans[i].theta])
+            human_velocities.append([self.humans[i].vx, self.humans[i].vy, self.humans[i].vr])
+
+        return human_positions, human_velocities
+
+    def set_human_states(self, positions, velocities):
+        for i in range(len(self.humans)):
+            self.humans[i].px, self.humans[i].py, self.humans[i].theta = positions[i]
+            self.humans[i].vx, self.humans[i].vy, self.humans[i].vr = velocities[i]
 
     def _get_reward(self, action):
         if self.robot.kinematics == 'holonomic':
@@ -794,33 +814,6 @@ class CrowdSim(gym.Env):
             if velocity_dist < velocity_dmin:
                 velocity_dmin = velocity_dist
 
-#         # check if the robot is cutting off a pedestrian
-#         time_to_collision_danger = False
-#         for i, human in enumerate(self.humans):
-#             dx = self.humans[i].px - self.robot.px
-#             dy = self.humans[i].py - self.robot.py
-#             
-#             dist = np.sqrt(dx**2 + dy**2) - self.humans[i].radius - self.robot.radius
-#             
-#             if self.robot.kinematics == 'holonomic':
-#                 vx = human.vx - self.robot.vx
-#                 vy = human.vy - self.robot.vy
-#             else:
-#                 raise NotImplementedError
-# 
-#             v = np.sqrt(vx**2 + vy**2)
-# 
-#             v_projection = (vx * px + vy * py) / dist # v dot p over ||p||
-# 
-#             time_to_collision = dist / (v_projection + 0.0001)
-# 
-#             if time_to_collision < 0:
-#                 time_to_collision = float('inf')
-# 
-#             if time_to_collision < 2.0:
-#                 time_to_collision_danger = True
-#                 break
-
         # check if reaching the goal
         end_position = np.array(self.robot.compute_position(action, self.time_step))
         reaching_goal = norm(end_position - np.array(self.robot.get_goal_position())) < 2.0 * self.robot.radius
@@ -848,10 +841,6 @@ class CrowdSim(gym.Env):
             reward = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
             done = False
             info['status'] = 'unsafe'
-#         elif time_to_collision_danger:
-#             reward = self.time_to_collision_penalty
-#             done = False
-#             info['status'] = 'time_to_collision'            
         else:
             done = False
             info['status'] = 'nothing'
@@ -859,6 +848,109 @@ class CrowdSim(gym.Env):
         if not done:
             reward += -0.001 # slack reward
 
+            
+        # Get initial goal potential and collision potential
+        if not done:
+            if self.n_episodes == 1:
+                self.initial_potential = self.get_potential()
+                self.normalized_potential = 1.0
+            
+            # Get delta potential and compute reward
+            current_potential = self.get_potential()
+            new_normalized_potential = current_potential / self.initial_potential
+            potential_reward = self.normalized_potential - new_normalized_potential
+            reward += potential_reward * self.potential_reward_weight
+            self.normalized_potential = new_normalized_potential
+            info['status'] = 'nothing'
+
+        return reward, done, info
+
+    def _get_reward_invisible_robot(self, action):
+        if self.robot.kinematics == 'holonomic':
+            action = ActionXY(action[0], action[1])
+        else:
+            action = ActionRot(action[0], action[1])
+            
+        # collision detection
+        dmin = float('inf')
+        collision = False
+        
+        for i, human in enumerate(self.humans):
+            px = human.px - self.robot.px
+            py = human.py - self.robot.py
+
+            if self.robot.kinematics == 'holonomic':
+                vx = human.vx - action.vx
+                vy = human.vy - action.vy
+            else:
+                vx = human.vx - action.v * np.cos(action.r + self.robot.theta)
+                vy = human.vy - action.v * np.sin(action.r + self.robot.theta)
+                
+            ex = px + vx * self.time_step
+            ey = py + vy * self.time_step
+
+            # closest distance between boundaries of two agents
+            closest_dist = point_to_segment_dist(px, py, ex, ey, 0, 0) - human.radius - self.robot.radius
+            
+            if closest_dist < 0:
+                collision = True
+                # logging.debug("Collision: distance between robot and p{} is {:.2E}".format(i, closest_dist))
+                break
+            
+            elif closest_dist < dmin:
+                dmin = closest_dist
+
+        # collision detection between humans
+        human_num = len(self.humans)
+        for i in range(human_num):
+            for j in range(i + 1, human_num):
+                dx = self.humans[i].px - self.humans[j].px
+                dy = self.humans[i].py - self.humans[j].py
+                dist = (dx ** 2 + dy ** 2) ** (1 / 2) - self.humans[i].radius - self.humans[j].radius
+                if dist < 0:
+                    # detect collision but don't take humans' collision into account
+                    logging.debug('Collision happens between humans in step()')
+
+        # Compute the delta between the human states WITHOUT robot action and those with robot action
+        current_positions, current_velocities = self.get_human_states()        
+        human_state_delta = np.linalg.norm(np.array(current_positions) - np.array(self.human_position_updates_without_robot[0])) + np.linalg.norm(np.array(current_velocities) - np.array(self.human_velocity_updates_without_robot))
+
+        #print("DELTA", human_state_delta)
+
+        # check if reaching the goal
+        end_position = np.array(self.robot.compute_position(action, self.time_step))
+        reaching_goal = norm(end_position - np.array(self.robot.get_goal_position())) < 2.0 * self.robot.radius
+
+        done = False
+        info = dict()
+        
+        reward = 0
+        
+        if self.global_time >= self.time_limit - 1:
+            reward = 0
+            done = True
+            info['status'] = 'timeout'
+        elif collision:
+            reward = self.collision_penalty
+            done = True
+            info['status'] = 'collision'            
+        elif reaching_goal:
+            reward = self.success_reward
+            done = True
+            info['status'] = 'success'
+#        elif velocity_dmin < self.discomfort_dist:
+#            # penalize agent for getting too close
+#            # adjust the reward based on FPS
+#            reward = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
+#            done = False
+#            info['status'] = 'unsafe'
+        else:
+            done = False
+            info['status'] = 'nothing'
+            
+        if not done:
+            reward += -0.001 # slack reward
+            reward += -1.0 * human_state_delta * self.time_step
             
         # Get initial goal potential and collision potential
         if not done:
