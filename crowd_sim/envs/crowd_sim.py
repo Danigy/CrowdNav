@@ -118,6 +118,7 @@ class CrowdSim(gym.Env):
         self.potential_reward_weight = config.getfloat('reward', 'potential_reward_weight')        
         self.discomfort_dist = config.getfloat('reward', 'discomfort_dist')
         self.discomfort_penalty_factor = config.getfloat('reward', 'discomfort_penalty_factor')
+        self.lookahead_interval = config.getfloat('reward', 'lookahead_interval')        
         self.draw_screen = config.getboolean('env', 'draw_screen')
         self.show_sensors = config.getboolean('env', 'show_sensors')
         self.display_fps = config.getfloat('env', 'display_fps')
