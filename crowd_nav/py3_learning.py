@@ -36,7 +36,7 @@ PERSONAL_SPACE_DISTANCE = 0.3
 MAX_STEPS = 1000
 HOLONOMIC = False
                 
-TUNING = True
+TUNING = False
 NN_TUNING = False
 
 class SimpleNavigation():
@@ -87,14 +87,14 @@ class SimpleNavigation():
                 decay = 0
         else:
             params = dict()
-            params['success'] = success_reward = 1
-            params['potential'] = potential_reward_weight = 10
-            params['collision'] = collision_penalty = -10
-            params['personal'] = personal_space_penalty = -100            
-            params['freespace'] = freespace_reward_weight = 0
-            params['slack'] = slack_reward = -0.01
-            potential_collision_reward_weight = 0
-            params['learning_rate'] = learning_rate = 0.001
+            success_reward = None
+            potential_reward_weight = None
+            collision_penalty = None
+            time_to_collision_penalty = None
+            personal_space_penalty = None          
+            slack_reward = None
+            energy_cost = None
+            learning_rate = 0.001
             params['nn_layers'] = nn_layers= [512, 256, 128]
             gamma = 0.99
             decay = 0
@@ -156,7 +156,7 @@ class SimpleNavigation():
             os.exit(0)
 
         #print("Holonomic?", HOLONOMIC)
-        model.learn(total_timesteps=200000)
+        model.learn(total_timesteps=500000)
         model.save(tb_log_dir + "/stable_baselines")
         print(">>>>> End testing <<<<<", self.string_to_filename(json.dumps(params)))
         print("Final weights saved at: ", tb_log_dir + "/stable_baselines.pkl")
