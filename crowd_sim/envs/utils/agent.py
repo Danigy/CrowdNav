@@ -121,16 +121,22 @@ class Agent(object):
         else:
             assert isinstance(action, ActionRot)
 
-    def compute_position(self, action, delta_t):
+    def compute_position(self, action, delta_t, no_action=False):
         self.check_validity(action)
-        if self.kinematics == 'holonomic':
-            px = self.px + action.vx * self.max_linear_velocity / np.sqrt(2.0) * delta_t
-            py = self.py + action.vy * self.max_linear_velocity / np.sqrt(2.0) * delta_t
-            theta = self.theta
-        else:
-            theta = (self.theta + action.r * self.max_angular_velocity * delta_t) % (2 * np.pi)
-            px = self.px + np.cos(theta) * action.v * delta_t * self.max_linear_velocity / np.sqrt(2.0)
-            py = self.py + np.sin(theta) * action.v * delta_t * self.max_linear_velocity / np.sqrt(2.0)
+        
+        if no_action:
+            px = self.px
+            py = self.py
+            theta = self.theta            
+        else:  
+            if self.kinematics == 'holonomic':
+                px = self.px + action.vx * self.max_linear_velocity / np.sqrt(2.0) * delta_t
+                py = self.py + action.vy * self.max_linear_velocity / np.sqrt(2.0) * delta_t
+                theta = self.theta
+            else:
+                theta = (self.theta + action.r * self.max_angular_velocity * delta_t) % (2 * np.pi)
+                px = self.px + np.cos(theta) * action.v * delta_t * self.max_linear_velocity / np.sqrt(2.0)
+                py = self.py + np.sin(theta) * action.v * delta_t * self.max_linear_velocity / np.sqrt(2.0)
 
         return px, py, theta
 

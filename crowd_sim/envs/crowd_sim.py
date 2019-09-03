@@ -33,11 +33,13 @@ from pymunk.space_debug_draw_options import SpaceDebugDrawOptions, SpaceDebugCol
 
 import random
 import math
+import time
 
 class CrowdSim(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self):
+    def __init__(self, success_reward=None, collision_penalty=None, time_to_collision_penalty=None, discomfort_dist=None,
+                       discomfort_penalty_factor=None, potential_reward_weight=None, slack_reward=None, energy_cost=None, draw_screen=None):
         """
         Movement simulation for n+1 agents
         Agent can either be human or robot.
@@ -51,12 +53,16 @@ class CrowdSim(gym.Env):
         self.humans = None
         self.global_time = None
         self.human_times = None
+        
         # reward function
-        self.success_reward = None
-        self.collision_penalty = None
-        self.time_to_collision_penalty = None        
-        self.discomfort_dist = None
-        self.discomfort_penalty_factor = None
+        self.success_reward = success_reward or None
+        self.collision_penalty = collision_penalty or None
+        self.time_to_collision_penalty = time_to_collision_penalty or None
+        self.discomfort_dist = discomfort_dist or None
+        self.discomfort_penalty_factor = discomfort_penalty_factor or None
+        self.slack_reward = slack_reward or None
+        self.energy_cost = energy_cost or None
+
         self.lookahead_interval = 2.0
         # simulation configuration
         self.config = None
@@ -77,6 +83,8 @@ class CrowdSim(gym.Env):
         self.n_sensors = 0
         self.sensor_range = 25 # meters
         self.n_episodes = 0
+        
+        self.draw_screen = draw_screen
                 
         ''' 'OpenAI Gym Requirements '''
         self._seed(123)
@@ -112,14 +120,18 @@ class CrowdSim(gym.Env):
         self.time_limit = config.getint('env', 'time_limit')
         self.time_step = config.getfloat('env', 'time_step')
         self.randomize_attributes = config.getboolean('env', 'randomize_attributes')
-        self.success_reward = config.getfloat('reward', 'success_reward')
-        self.collision_penalty = config.getfloat('reward', 'collision_penalty')
+        
+        self.success_reward = self.success_reward or config.getfloat('reward', 'success_reward')
+        self.collision_penalty = self.collision_penalty or config.getfloat('reward', 'collision_penalty')
         self.time_to_collision_penalty = config.getfloat('reward', 'time_to_collision_penalty')        
         self.potential_reward_weight = config.getfloat('reward', 'potential_reward_weight')        
         self.discomfort_dist = config.getfloat('reward', 'discomfort_dist')
         self.discomfort_penalty_factor = config.getfloat('reward', 'discomfort_penalty_factor')
+        self.slack_reward = config.getfloat('reward', 'slack_reward')
+        self.energy_cost = config.getfloat('reward', 'energy_cost')
+                
         self.lookahead_interval = config.getfloat('reward', 'lookahead_interval')        
-        self.draw_screen = config.getboolean('env', 'draw_screen')
+        self.draw_screen = self.draw_screen or config.getboolean('env', 'draw_screen')
         self.show_sensors = config.getboolean('env', 'show_sensors')
         self.display_fps = config.getfloat('env', 'display_fps')
 
@@ -478,9 +490,12 @@ class CrowdSim(gym.Env):
         if self.robot is None:
             raise AttributeError('robot has to be set!')
         assert phase in ['train', 'val', 'test']
+        
         if test_case is not None:
             self.case_counter[phase] = test_case
+            
         self.global_time = 0
+        
         if phase == 'test':
             self.human_times = [0] * self.human_num
         else:
@@ -511,7 +526,7 @@ class CrowdSim(gym.Env):
             gx = np.random.random() * self.square_width * 0.2 * sign
             gy = self.square_width * 0.35
             
-            self.robot.set(px, py, 0, gx, gy, 0, 0, 0, np.pi/2)
+            self.robot.set(px, py, np.pi/2, gx, gy, 0, 0, 0, 0)
 
             if self.case_counter[phase] >= 0:
                 np.random.seed(counter_offset[phase] + self.case_counter[phase])
@@ -568,6 +583,7 @@ class CrowdSim(gym.Env):
         self.draw_screen = draw_screen if draw_screen is not None else self.draw_screen
         self.display_fps = display_fps if display_fps is not None else self.display_fps
 
+        # Convert the action variables to robot actions
         if self.robot.kinematics == 'holonomic':
             action = ActionXY(action[0], action[1])                        
         else:
@@ -576,10 +592,7 @@ class CrowdSim(gym.Env):
             
         self.n_episodes += 1
 
-        # Update the humans without the robot, save the results, and restore the original human states
-        self.update_without_robot()
-
-        # Now proceed with a regular update with the robot
+        # Compute the next human actions from the current observations
         human_actions = []
 
         for human in self.humans:
@@ -588,41 +601,52 @@ class CrowdSim(gym.Env):
           
             if self.robot.visible:
                 ob += [self.robot.get_observable_state()]
+                
             human_actions.append(human.act(ob))
 
-        reward, done, info = self._get_reward_invisible_robot(action)
-
+        # Move humans and robot according to current observation and action
         if update:            
-            # store state, action value and attention weights
-            self.states.append([self.robot.get_full_state(), [human.get_full_state() for human in self.humans]])
-            if hasattr(self.robot.policy, 'action_values'):
-                self.action_values.append(self.robot.policy.action_values)
-            if hasattr(self.robot.policy, 'get_attention_weights'):
-                self.attention_weights.append(self.robot.policy.get_attention_weights())
+#             # store state, action value and attention weights
+#             self.states.append([self.robot.get_full_state(), [human.get_full_state() for human in self.humans]])
+#             
+#             if hasattr(self.robot.policy, 'action_values'):
+#                 self.action_values.append(self.robot.policy.action_values)
+#                 
+#             if hasattr(self.robot.policy, 'get_attention_weights'):
+#                 self.attention_weights.append(self.robot.policy.get_attention_weights())
 
-            # update all agents
+            # Move the robot
             self.robot.step(action)
+            
+            # Move each human
             for i, human_action in enumerate(human_actions):
                 self.humans[i].step(human_action)
+                
             self.global_time += self.time_step
+            
             for i, human in enumerate(self.humans):
                 # only record the first time the human reaches the goal
                 if self.human_times[i] == 0 and human.reached_destination():
                     self.human_times[i] = self.global_time
 
-            # compute the observation
+            # Get the new observation
             if self.robot.sensor == 'coordinates':
                 ob = [human.get_observable_state() for human in self.humans]
+                
             elif self.robot.sensor == 'RGB':
                 raise NotImplementedError
         else:
             if self.robot.sensor == 'coordinates':
                 ob = [human.get_next_observable_state(action) for human, action in zip(self.humans, human_actions)]
+                
             elif self.robot.sensor == 'RGB':
                 raise NotImplementedError
             
-        # Update Pymunk
-        self.space.step(self.time_step)
+        # Convert observable state to numpy state for Tensorflow stable-baselines
+        state = self._get_state()
+            
+        # Compute the reward
+        reward, done, info = self._get_reward(action)
 
         # Update Pygame screen
         if self.draw_screen:
@@ -653,11 +677,11 @@ class CrowdSim(gym.Env):
                 px = human_state.px - self.robot.px
                 py = human_state.py - self.robot.py
 
-                if self.robot.kinematics == 'holonomic':
-                    vx = human_state.vx
-                    vy = human_state.vy
-                else:
-                    raise NotImplementedError
+                #if self.robot.kinematics == 'holonomic':
+                vx = human_state.vx
+                vy = human_state.vy
+                #else:
+                #    raise NotImplementedError
             
                 ex = human_state.px + vx * self.lookahead_interval
                 ey = human_state.py + vy * self.lookahead_interval
@@ -685,6 +709,9 @@ class CrowdSim(gym.Env):
                 pygame.draw.circle(self.surface, (255, 0, 0, 200), (pygame_gx, self.screen_y(pygame_gy)), 10)                
 
                 index += 1
+                
+            # Update Pymunk
+            self.space.step(self.time_step)
             
             self.space.debug_draw(self.draw_options)
             self.screen.blit(self.surface, (0, 0))
@@ -693,11 +720,6 @@ class CrowdSim(gym.Env):
             self.screen.fill(THECOLORS["black"])
             self.surface.fill(THECOLORS["black"])
             #self.surface2.fill(THECOLORS["black"])
-            
-        # Convert Observable state to numpy state
-        state = self._get_state()
-
-        #print(state)
 
         if debug:
             return ob, reward, done, info
@@ -755,18 +777,8 @@ class CrowdSim(gym.Env):
             px = human.px - self.robot.px
             py = human.py - self.robot.py
 
-            if self.robot.kinematics == 'holonomic':
-                vx = human.vx - action.vx
-                vy = human.vy - action.vy
-            else:
-                vx = human.vx - action.v * np.cos(action.r + self.robot.theta)
-                vy = human.vy - action.v * np.sin(action.r + self.robot.theta)
-                
-            ex = px + vx * self.time_step
-            ey = py + vy * self.time_step
-
             # closest distance between boundaries of two agents
-            closest_dist = point_to_segment_dist(px, py, ex, ey, 0, 0) - human.radius - self.robot.radius
+            closest_dist = np.linalg.norm([px, py]) - human.radius - self.robot.radius
             
             if closest_dist < 0:
                 collision = True
@@ -787,7 +799,7 @@ class CrowdSim(gym.Env):
                     # detect collision but don't take humans' collision into account
                     logging.debug('Collision happens between humans in step()')
                     
-        # velocity projection to detect "cutting someone off"
+        # velocity projection to elongate the personal space in the direction of motion
         velocity_dmin = float('inf')
         cutting_off = False
         
@@ -795,34 +807,24 @@ class CrowdSim(gym.Env):
             px = human.px - self.robot.px
             py = human.py - self.robot.py
 
-            # if self.robot.kinematics == 'holonomic':
-            #     vx = human.vx - action.vx
-            #     vy = human.vy - action.vy
-            # else:
-            #     vx = human.vx - action.v * np.cos(action.r + self.robot.theta)
-            #     vy = human.vy - action.v * np.sin(action.r + self.robot.theta)
+            ex = px + human.vx * self.lookahead_interval
+            ey = py + human.vy * self.lookahead_interval
             
-            # ex = px + vx * self.lookahead_interval
-            # ey = py + vy * self.lookahead_interval
-
-            ex = human.px + human.vx * self.lookahead_interval - self.robot.px
-            ey = human.py + human.vy * self.lookahead_interval - self.robot.py
-            
-            # project motion ahead lookahead_time seconds
+            # get the nearest distance to segment connecting the current position and future position
             velocity_dist = point_to_segment_dist(px, py, ex, ey, 0, 0) - human.radius - self.robot.radius
 
             if velocity_dist < velocity_dmin:
                 velocity_dmin = velocity_dist
 
-        # check if reaching the goal
-        end_position = np.array(self.robot.compute_position(action, self.time_step))
-        reaching_goal = norm(end_position - np.array(self.robot.get_goal_position())) < 2.0 * self.robot.radius
+        reaching_goal = np.linalg.norm(np.array([self.robot.px, self.robot.py]) - np.array([self.robot.gx, self.robot.gy])) < 2.0 * self.robot.radius
 
         done = False
         info = dict()
         
         reward = 0
-        
+        discomfort = 0
+        potent = 0
+                
         if self.global_time >= self.time_limit - 1:
             reward = 0
             done = True
@@ -839,6 +841,7 @@ class CrowdSim(gym.Env):
             # penalize agent for getting too close
             # adjust the reward based on FPS
             reward = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
+            discomfort = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
             done = False
             info['status'] = 'unsafe'
         else:
@@ -846,8 +849,12 @@ class CrowdSim(gym.Env):
             info['status'] = 'nothing'
             
         if not done:
-            reward += -0.001 # slack reward
-
+            # time cost (slack reward)
+            reward += self.slack_reward * self.time_step
+            
+            # energy cost
+            reward += self.energy_cost * np.linalg.norm(np.array([self.robot.vx, self.robot.vy])) * self.time_step
+            #print(-0.01 * np.linalg.norm(np.array([self.robot.vx, self.robot.vy])))
             
         # Get initial goal potential and collision potential
         if not done:
@@ -859,9 +866,17 @@ class CrowdSim(gym.Env):
             current_potential = self.get_potential()
             new_normalized_potential = current_potential / self.initial_potential
             potential_reward = self.normalized_potential - new_normalized_potential
+            
+            potent = potential_reward * self.potential_reward_weight
             reward += potential_reward * self.potential_reward_weight
+            
             self.normalized_potential = new_normalized_potential
             info['status'] = 'nothing'
+            
+        #time.sleep(0.25)
+            
+        #print("Collision?", collision, " Success?", reaching_goal, " Discomfort: ", discomfort, " Potential", potent, " Reward", reward)
+
 
         return reward, done, info
 
@@ -913,12 +928,13 @@ class CrowdSim(gym.Env):
 
         # Compute the delta between the human states WITHOUT robot action and those with robot action
         current_positions, current_velocities = self.get_human_states()        
-        human_state_delta = np.linalg.norm(np.array(current_positions) - np.array(self.human_position_updates_without_robot[0])) + np.linalg.norm(np.array(current_velocities) - np.array(self.human_velocity_updates_without_robot))
+        #human_state_delta = np.linalg.norm(np.array(current_positions) - np.array(self.human_position_updates_without_robot[0])) + np.linalg.norm(np.array(current_velocities) - np.array(self.human_velocity_updates_without_robot))
+        human_state_delta = np.linalg.norm(np.array(current_velocities) - np.array(self.human_velocity_updates_without_robot))
 
         #print("DELTA", human_state_delta)
 
-        # check if reaching the goal
-        end_position = np.array(self.robot.compute_position(action, self.time_step))
+        # check if we have reached the goal
+        end_position = np.array(self.robot.compute_position(action, self.time_step, no_action=True))
         reaching_goal = norm(end_position - np.array(self.robot.get_goal_position())) < 2.0 * self.robot.radius
 
         done = False
@@ -950,7 +966,8 @@ class CrowdSim(gym.Env):
             
         if not done:
             reward += -0.001 # slack reward
-            reward += -1.0 * human_state_delta * self.time_step
+            reward += -5.0 * human_state_delta * self.time_step / self.human_num
+            #print(-5.0 * human_state_delta * self.time_step / self.human_num)
             
         # Get initial goal potential and collision potential
         if not done:

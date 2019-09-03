@@ -36,7 +36,7 @@ PERSONAL_SPACE_DISTANCE = 0.3
 MAX_STEPS = 1000
 HOLONOMIC = False
                 
-TUNING = False
+TUNING = True
 NN_TUNING = False
 
 class SimpleNavigation():
@@ -65,16 +65,17 @@ class SimpleNavigation():
             potential_collision_reward_weight = 0
             personal_space_penalty = -100
             freespace_reward_weight = 0.0  
-            slack_reward = -0.01
-            learning_rate = 0.0005
+            slack_reward = -0.001
+            learning_rate = 0.0003
         elif TUNING:
-            success_reward = params['success']
-            potential_reward_weight = params['potential']
-            collision_penalty = params['collision']
-            personal_space_penalty = params['personal']
-            freespace_reward_weight = 0.0
-            potential_collision_reward_weight = 0.0
-            slack_reward = -0.01
+            success_reward = 1.0
+            collision_penalty = -0.25
+            potential_reward_weight = 1.0
+            time_to_collision_penalty = 0.0
+            discomfort_penalty_factor = 0.5
+            slack_reward = params['slack']
+            energy_cost = params['energy']
+
             learning_rate = 0.001
             
             #personal_space_cost = 0.0
@@ -93,7 +94,7 @@ class SimpleNavigation():
             params['freespace'] = freespace_reward_weight = 0
             params['slack'] = slack_reward = -0.01
             potential_collision_reward_weight = 0
-            params['learning_rate'] = learning_rate = 0.0005
+            params['learning_rate'] = learning_rate = 0.001
             params['nn_layers'] = nn_layers= [512, 256, 128]
             gamma = 0.99
             decay = 0
@@ -113,11 +114,16 @@ class SimpleNavigation():
         env_config = configparser.RawConfigParser()
         env_config.read(args.env_config)
         
-        env = gym.make('CrowdSim-v0')
+        draw_screen = True if args.draw_screen else None
+        
+        env = gym.make('CrowdSim-v0', success_reward=success_reward, collision_penalty=collision_penalty, time_to_collision_penalty=time_to_collision_penalty,
+                       discomfort_dist=None, discomfort_penalty_factor=None, potential_reward_weight=potential_reward_weight, slack_reward=slack_reward,
+                       energy_cost=slack_reward, draw_screen=draw_screen)
+        
         print("Gym environment created.")
         
-        env.seed(123)
-        np.random.seed(123)
+        env.seed(321)
+        np.random.seed(321)
         
         robot = Robot(env_config, 'robot')
         robot.set_policy(policy)
@@ -129,7 +135,7 @@ class SimpleNavigation():
 
         if TUNING or NN_TUNING:
             tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_' + self.string_to_filename(json.dumps(params))
-            save_weights_file = tb_log_dir + '/dqn_' + ENV_NAME + '_weights_' + self.string_to_filename(json.dumps(args)) +'.h5f'
+            save_weights_file = tb_log_dir + '/dqn_' + ENV_NAME + '_weights_' + self.string_to_filename(json.dumps(params)) +'.h5f'
 
         else:
             tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_' + self.string_to_filename(json.dumps(params))
@@ -138,7 +144,7 @@ class SimpleNavigation():
 
         weights_path = os.path.join(tb_log_dir, "model_weights.{epoch:02d}.h5")
  
-        model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate,  buffer_size=100000)
+        model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate,  buffer_size=50000)
         
         if args.test:
             print("Testing!")
@@ -150,7 +156,7 @@ class SimpleNavigation():
             os.exit(0)
 
         #print("Holonomic?", HOLONOMIC)
-        model.learn(total_timesteps=1000000)
+        model.learn(total_timesteps=200000)
         model.save(tb_log_dir + "/stable_baselines")
         print(">>>>> End testing <<<<<", self.string_to_filename(json.dumps(params)))
         print("Final weights saved at: ", tb_log_dir + "/stable_baselines.pkl")
@@ -223,14 +229,14 @@ if __name__ == '__main__':
     
     class CustomPolicy(FeedForwardPolicy):
         def __init__(self, *args, **kwargs):
-            super(CustomPolicy, self).__init__(*args, layers=[256, 128, 64], layer_norm=False, feature_extraction="mlp", **kwargs)
+            super(CustomPolicy, self).__init__(*args, layers=[512, 256, 128], layer_norm=False, feature_extraction="mlp", **kwargs)
 
     if NN_TUNING:
         param_list = []
     
-        #nn_architectures = [[256, 256], [128, 128], [64, 64]]
-        nn_architectures = [[512, 256, 128], [1024, 512, 256], [512, 256, 128, 64]]
-        gammas = [0.99, 0.95, 0.9]
+        nn_architectures = [[64, 64], [512, 256, 128], [256, 128, 64]]
+        #nn_architectures = [[64, 64, 64], [1024, 512, 256], [512, 256, 128, 64]]
+        gammas = [0.99, 0.95]
         #decays = [0.0]
         for gamma in gammas:
             for nn_layers in nn_architectures:
@@ -251,25 +257,16 @@ if __name__ == '__main__':
     elif TUNING:
         param_list = []
         
-        success_rewards = [1, 10, 100]
-        #potential_reward_weights = [0.1, 1]
-        potential_reward_weights = [10, 100]
-        #collision_penalties = [-0.1, -1]
-        collision_penalties = [-10, -100]
-        #personal_space_penalties = [-0.1, -1]
-        personal_space_penalties = [-10, -100]
+        slack_rewards = [-0.0005, -0.001, -0.005, -0.01]
+        energy_costs = [-0.0005, -0.001, -0.005, -0.01]
 
-        for success_reward in success_rewards:
-            for potential_reward_weight in potential_reward_weights:
-                for collision_penalty in collision_penalties:
-                    for personal_space_penalty in personal_space_penalties:
-                        params = {
-                                  "success": success_reward,
-                                  "potential": potential_reward_weight,
-                                  "collision": collision_penalty,
-                                  "personal": personal_space_penalty
-                                  }
-                    param_list.append(params)
+        for slack_reward in slack_rewards:
+            for energy_cost in energy_costs:
+                params = {
+                          "slack": slack_reward,
+                          "energy": energy_cost
+                          }
+                param_list.append(params)
 
         for param_set in param_list:
             launch_learn(param_set)
