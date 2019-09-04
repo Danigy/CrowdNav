@@ -1,7 +1,7 @@
 import logging
 import copy
 import torch
-from crowd_sim.envs.utils.info import *
+from crowd_sim.envs.utils.info import Timeout, Danger, ReachGoal, Collision, Nothing
 
 
 class Explorer(object):
@@ -33,14 +33,14 @@ class Explorer(object):
         collision_cases = []
         timeout_cases = []
         for i in range(k):
-            ob = self.env.reset(phase)
+            ob = self.env.reset(phase, debug=True)
             done = False
             states = []
             actions = []
             rewards = []
             while not done:
                 action = self.robot.act(ob)
-                ob, reward, done, info = self.env.step(action)
+                ob, reward, done, info = self.env.step(action, debug=True)
                 states.append(self.robot.policy.last_state)
                 actions.append(action)
                 rewards.append(reward)

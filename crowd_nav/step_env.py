@@ -68,7 +68,7 @@ def main():
     env_config.read(args.env_config)
     
     env = gym.make('CrowdSim-v0', success_reward=None, collision_penalty=None, time_to_collision_penalty=None, discomfort_dist=None,
-                       discomfort_penalty_factor=None, potential_reward_weight=None, slack_reward=None, energy_cost=None, display_screen=None)
+                       discomfort_penalty_factor=None, potential_reward_weight=None, slack_reward=None, energy_cost=None, draw_screen=args.visualize)
     print("Gym environment created.")
     
     env.seed(123)
@@ -110,8 +110,8 @@ def main():
             #last_pos = np.array(robot.get_position())
             while not done:
                 action = robot.act(ob)
-                ob, _, done, info = env.step(action, update=True, debug=True, display_fps=50)
-                time.sleep(0.25)
+                ob, _, done, info = env.step(action, update=True, debug=True, display_fps=1000)
+                #time.sleep(0.25)
                 #current_pos = np.array(robot.get_position())
                 #logging.debug('Speed: %.2f', np.linalg.norm(current_pos - last_pos) / robot.time_step)
                 #last_pos = current_pos

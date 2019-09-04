@@ -19,7 +19,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'envs'))
 sys.path.append(os.path.join(os.path.dirname(__file__), 'envs/utils'))
 
 from crowd_sim.envs.utils.human import Human
-from crowd_sim.envs.utils.info import *
+from crowd_sim.envs.utils.info import Timeout, Danger, ReachGoal, Collision, Nothing
 from crowd_sim.envs.utils.utils import point_to_segment_dist
 from crowd_sim.envs.utils.action import ActionXY, ActionRot
 
@@ -572,7 +572,7 @@ class CrowdSim(gym.Env):
         else:
             return state
 
-    def onestep_lookahead(self, action, debug=False, draw_screen=None, display_fps=None):
+    def onestep_lookahead(self, action, debug=True, draw_screen=None, display_fps=None):
         return self.step(action, update=False, debug=debug, draw_screen=None, display_fps=None)
 
     def step(self, action, update=True, debug=False, draw_screen=None, display_fps=None):
@@ -819,7 +819,6 @@ class CrowdSim(gym.Env):
         reaching_goal = np.linalg.norm(np.array([self.robot.px, self.robot.py]) - np.array([self.robot.gx, self.robot.gy])) < 2.0 * self.robot.radius
 
         done = False
-        info = dict()
         
         reward = 0
         discomfort = 0
@@ -828,25 +827,25 @@ class CrowdSim(gym.Env):
         if self.global_time >= self.time_limit - 1:
             reward = 0
             done = True
-            info['status'] = 'timeout'
+            info = Timeout()
         elif collision:
             reward = self.collision_penalty
             done = True
-            info['status'] = 'collision'            
+            info = Collision()
         elif reaching_goal:
             reward = self.success_reward
             done = True
-            info['status'] = 'success'
+            info = ReachGoal()
         elif velocity_dmin < self.discomfort_dist:
             # penalize agent for getting too close
             # adjust the reward based on FPS
             reward = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
             discomfort = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
             done = False
-            info['status'] = 'unsafe'
+            info = Danger(velocity_dmin)
         else:
             done = False
-            info['status'] = 'nothing'
+            info = Nothing()
             
         if not done:
             # time cost (slack reward)
@@ -871,7 +870,7 @@ class CrowdSim(gym.Env):
             reward += potential_reward * self.potential_reward_weight
             
             self.normalized_potential = new_normalized_potential
-            info['status'] = 'nothing'
+            info = Nothing
             
         #time.sleep(0.25)
             

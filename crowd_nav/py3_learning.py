@@ -26,15 +26,6 @@ from crowd_nav.utils.explorer import Explorer
 from crowd_nav.policy.policy_factory import policy_factory
 
 ENV_NAME = 'CrowdSim-v0'
-
-N_SENSORS = 0
-N_ACTIONS = 3
-            
-N_OBSTACLES = 0
-N_PEDESTRIANS = 3
-PERSONAL_SPACE_DISTANCE = 0.3
-MAX_STEPS = 1000
-HOLONOMIC = False
                 
 TUNING = False
 NN_TUNING = False
@@ -56,17 +47,18 @@ class SimpleNavigation():
         print(args)
         
         if NN_TUNING:
-            gamma = params['gamma']
+            gamma = 0.9
             params['decay'] = decay = 0
             params['batch_norm'] = 'no'
-            success_reward = 1
-            potential_reward_weight = 10
-            collision_penalty = -10
-            potential_collision_reward_weight = 0
-            personal_space_penalty = -100
-            freespace_reward_weight = 0.0  
-            slack_reward = -0.001
-            learning_rate = 0.0003
+            success_reward = None
+            potential_reward_weight = None
+            collision_penalty = None
+            time_to_collision_penalty = None
+            personal_space_penalty = None          
+            slack_reward = None
+            energy_cost = None
+            slack_reward = None
+            learning_rate = 0.0005
         elif TUNING:
             success_reward = 1.0
             collision_penalty = -0.25
@@ -76,14 +68,14 @@ class SimpleNavigation():
             slack_reward = params['slack']
             energy_cost = params['energy']
 
-            learning_rate = 0.001
+            learning_rate = 0.0005
             
             #personal_space_cost = 0.0
             #slack_reward = -0.01
             #learning_rate = 0.001
             if not NN_TUNING:
                 nn_layers= [512, 256, 128]
-                gamma = 0.99
+                gamma = 0.9
                 decay = 0
         else:
             params = dict()
@@ -92,11 +84,11 @@ class SimpleNavigation():
             collision_penalty = None
             time_to_collision_penalty = None
             personal_space_penalty = None          
-            slack_reward = None
-            energy_cost = None
+            slack_reward = -0.001
+            energy_cost = -0.001
             learning_rate = 0.001
-            params['nn_layers'] = nn_layers= [512, 256, 128]
-            gamma = 0.99
+            params['nn_layers'] = nn_layers= [64, 64]
+            gamma = 0.9
             decay = 0
             batch_norm = 'no'
 
@@ -144,7 +136,7 @@ class SimpleNavigation():
 
         weights_path = os.path.join(tb_log_dir, "model_weights.{epoch:02d}.h5")
  
-        model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate,  buffer_size=50000)
+        model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate,  buffer_size=100000)
         
         if args.test:
             print("Testing!")
@@ -156,7 +148,7 @@ class SimpleNavigation():
             os.exit(0)
 
         #print("Holonomic?", HOLONOMIC)
-        model.learn(total_timesteps=500000)
+        model.learn(total_timesteps=1000000)
         model.save(tb_log_dir + "/stable_baselines")
         print(">>>>> End testing <<<<<", self.string_to_filename(json.dumps(params)))
         print("Final weights saved at: ", tb_log_dir + "/stable_baselines.pkl")
@@ -229,7 +221,7 @@ if __name__ == '__main__':
     
     class CustomPolicy(FeedForwardPolicy):
         def __init__(self, *args, **kwargs):
-            super(CustomPolicy, self).__init__(*args, layers=[512, 256, 128], layer_norm=False, feature_extraction="mlp", **kwargs)
+            super(CustomPolicy, self).__init__(*args, layers=[64, 64], layer_norm=False, feature_extraction="mlp", **kwargs)
 
     if NN_TUNING:
         param_list = []

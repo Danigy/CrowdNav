@@ -113,16 +113,17 @@ class CADRL(Policy):
             if self.kinematics == 'holonomic':
                 next_px = state.px + action.vx * self.time_step
                 next_py = state.py + action.vy * self.time_step
-                next_state = FullState(next_px, next_py, action.vx, action.vy, state.radius, state.personal_space,
-                                       state.gx, state.gy, state.v_pref, state.theta)
+                next_state = FullState(next_px, next_py, 0.0, action.vx, action.vy, 0.0, state.radius, state.personal_space,
+                                       state.gx, state.gy, 0.0, state.v_pref)
             else:
                 next_theta = state.theta + action.r
                 next_vx = action.v * np.cos(next_theta)
                 next_vy = action.v * np.sin(next_theta)
                 next_px = state.px + next_vx * self.time_step
                 next_py = state.py + next_vy * self.time_step
-                next_state = FullState(next_px, next_py, next_vx, next_vy, state.radius, state.personal_space, state.gx, state.gy,
-                                       state.v_pref, next_theta)
+                next_state = FullState(next_px, next_py, next_theta, next_vx, next_vy, action.r, state.radius, state.personal_space,
+                                       state.gx, state.gy, 0.0, state.v_pref)
+
         else:
             raise ValueError('Type error')
 
@@ -190,33 +191,39 @@ class CADRL(Policy):
         Input state tensor is of size (batch_size, state_length)
 
         """
+        # New mapping
+        # 'px', 'py', 'theta' 'vx', 'vy', 'vr', 'radius', 'gx', 'gy', 'gr', 'v_pref', 'px1', 'py1', theta1, 'vx1', 'vy1', 'vr1', 'radius1'
+        #  0     1      2      3      4     5      6        7     8    9       10       11     12     13      14     15     16     17
+        
+        # Old mapping
         # 'px', 'py', 'vx', 'vy', 'radius', 'gx', 'gy', 'v_pref', 'theta', 'px1', 'py1', 'vx1', 'vy1', 'radius1'
         #  0     1      2     3      4        5     6      7         8       9     10      11     12       13
+
         batch = state.shape[0]
-        dx = (state[:, 5] - state[:, 0]).reshape((batch, -1))
-        dy = (state[:, 6] - state[:, 1]).reshape((batch, -1))
-        rot = torch.atan2(state[:, 6] - state[:, 1], state[:, 5] - state[:, 0])
+        dx = (state[:, 7] - state[:, 0]).reshape((batch, -1))
+        dy = (state[:, 8] - state[:, 1]).reshape((batch, -1))
+        rot = torch.atan2(state[:, 8] - state[:, 1], state[:, 7] - state[:, 0])
 
         dg = torch.norm(torch.cat([dx, dy], dim=1), 2, dim=1, keepdim=True)
-        v_pref = state[:, 7].reshape((batch, -1))
-        vx = (state[:, 2] * torch.cos(rot) + state[:, 3] * torch.sin(rot)).reshape((batch, -1))
-        vy = (state[:, 3] * torch.cos(rot) - state[:, 2] * torch.sin(rot)).reshape((batch, -1))
+        v_pref = state[:, 10].reshape((batch, -1))
+        vx = (state[:, 3] * torch.cos(rot) + state[:, 4] * torch.sin(rot)).reshape((batch, -1))
+        vy = (state[:, 4] * torch.cos(rot) - state[:, 3] * torch.sin(rot)).reshape((batch, -1))
 
-        radius = state[:, 4].reshape((batch, -1))
+        radius = state[:, 2].reshape((batch, -1))
         if self.kinematics == 'unicycle':
-            theta = (state[:, 8] - rot).reshape((batch, -1))
+            theta = (state[:, 2] - rot).reshape((batch, -1))
         else:
             # set theta to be zero since it's not used
             theta = torch.zeros_like(v_pref)
-        vx1 = (state[:, 11] * torch.cos(rot) + state[:, 12] * torch.sin(rot)).reshape((batch, -1))
-        vy1 = (state[:, 12] * torch.cos(rot) - state[:, 11] * torch.sin(rot)).reshape((batch, -1))
-        px1 = (state[:, 9] - state[:, 0]) * torch.cos(rot) + (state[:, 10] - state[:, 1]) * torch.sin(rot)
+        vx1 = (state[:, 14] * torch.cos(rot) + state[:, 15] * torch.sin(rot)).reshape((batch, -1))
+        vy1 = (state[:, 15] * torch.cos(rot) - state[:, 14] * torch.sin(rot)).reshape((batch, -1))
+        px1 = (state[:, 11] - state[:, 0]) * torch.cos(rot) + (state[:, 12] - state[:, 1]) * torch.sin(rot)
         px1 = px1.reshape((batch, -1))
-        py1 = (state[:, 10] - state[:, 1]) * torch.cos(rot) - (state[:, 9] - state[:, 0]) * torch.sin(rot)
+        py1 = (state[:, 12] - state[:, 1]) * torch.cos(rot) - (state[:, 11] - state[:, 0]) * torch.sin(rot)
         py1 = py1.reshape((batch, -1))
-        radius1 = state[:, 13].reshape((batch, -1))
+        radius1 = state[:, 17].reshape((batch, -1))
         radius_sum = radius + radius1
-        da = torch.norm(torch.cat([(state[:, 0] - state[:, 9]).reshape((batch, -1)), (state[:, 1] - state[:, 10]).
+        da = torch.norm(torch.cat([(state[:, 0] - state[:, 11]).reshape((batch, -1)), (state[:, 1] - state[:, 12]).
                                   reshape((batch, -1))], dim=1), 2, dim=1, keepdim=True)
         new_state = torch.cat([dg, v_pref, theta, radius, vx, vy, px1, py1, vx1, vy1, radius1, da, radius_sum], dim=1)
         return new_state
