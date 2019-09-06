@@ -85,7 +85,7 @@ class SimpleNavigation():
             personal_space_penalty = None          
             slack_reward = -0.001
             energy_cost = -0.001
-            learning_rate = 0.0005
+            learning_rate = 0.001
             params['nn_layers'] = nn_layers= [64, 64]
             gamma = 0.9
             decay = 0
@@ -121,7 +121,8 @@ class SimpleNavigation():
         
         env.set_robot(robot)
         env.configure(env_config)
-    
+
+        self.human_num = env_config.getint('sim', 'human_num')        
 
         env = DummyVecEnv([lambda: env])
 
@@ -146,7 +147,7 @@ class SimpleNavigation():
         model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate,  buffer_size=50000)
         
         if args.pre_train:
-            pretrain_log_dir = os.path.expanduser('~') + '/tensorboard_logs/orca_' + self.string_to_filename(json.dumps(params))
+            pretrain_log_dir = os.path.expanduser('~') + '/tensorboard_logs/orca_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))            
             pretrained_weights_file = pretrain_log_dir + '/orca_weights_final.npz'
     
             dataset = ExpertDataset(expert_path=pretrained_weights_file, traj_limitation=1000, batch_size=128)
@@ -183,7 +184,7 @@ class SimpleNavigation():
             env.close()
             os._exit(0)
 
-        model.learn(total_timesteps=500000, log_interval=100)
+        model.learn(total_timesteps=200000, log_interval=100)
         model.save(tb_log_dir + "/stable_baselines")
         print(">>>>> End testing <<<<<", self.string_to_filename(json.dumps(params)))
         print("Final weights saved at: ", tb_log_dir + "/stable_baselines.pkl")

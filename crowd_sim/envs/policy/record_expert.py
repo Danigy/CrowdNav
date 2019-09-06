@@ -130,7 +130,6 @@ def generate_expert_traj(model, save_path=None, env=None, n_timesteps=0,
             reward = np.array([reward[0]])
             done = np.array([done[0]])
 
-        print(action, obs)
         actions.append(action)
         rewards.append(reward)
         episode_starts.append(done)

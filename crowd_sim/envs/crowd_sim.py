@@ -38,7 +38,6 @@ import time
 
 from collections import OrderedDict
 
-atexit.register(sys.exit)
 atexit.register(pygame.quit)
 atexit.register(pygame.display.quit)
 

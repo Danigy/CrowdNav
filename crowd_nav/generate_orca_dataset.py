@@ -4,13 +4,8 @@ import numpy as np
 import random
 import os.path
 import sys
-import datetime, time
-
-import tensorflow as tf
 
 from stable_baselines.common.vec_env import DummyVecEnv
-from stable_baselines.sac.policies import MlpPolicy, FeedForwardPolicy
-from stable_baselines import SAC
 from crowd_sim.envs.policy.record_expert import generate_expert_traj
 
 from collections import OrderedDict
@@ -76,7 +71,7 @@ class ExpertNavigation():
         # configure environment
         env_config = configparser.RawConfigParser()
         env_config.read(args.env_config)
-        
+
         draw_screen = True if args.draw_screen else None
         
         env = gym.make('CrowdSim-v0', success_reward=success_reward, collision_penalty=collision_penalty, time_to_collision_penalty=time_to_collision_penalty,
@@ -94,7 +89,9 @@ class ExpertNavigation():
         env.set_robot(self.robot)
         env.configure(env_config)
 
-        tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/orca_' + self.string_to_filename(json.dumps(params))
+        self.human_num = env_config.getint('sim', 'human_num')
+
+        tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/orca_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))
         
         try:
             os.mkdir(tb_log_dir)
@@ -102,10 +99,8 @@ class ExpertNavigation():
             pass
         
         save_weights_file = tb_log_dir + '/orca_weights_final.npz'
-        
-        #model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate,  buffer_size=50000)
-        
-        generate_expert_traj(self.orca_expert, save_weights_file, env, n_episodes=100)
+
+        generate_expert_traj(self.orca_expert, save_weights_file, env, n_episodes=10000)
 
 #         if args.test:
 #             print("Testing!")
@@ -131,63 +126,9 @@ class ExpertNavigation():
         output = input.replace('"', '').replace('{', '').replace('}', '').replace(' ', '_').replace(',', '_')
         return output
 
-    def tensorboard_callback(self, locals_, globals_):
-        self_ = locals_['self']
-        print(locals_, globals_)
-
-        return True    
-    
-def launch_learn(params):
-    print("Starting test with params:", params)
-    ExpertNavigation(sys.argv, params)
-
 if __name__ == '__main__':
     def pathstr(v): return os.path.abspath(v)
     
-    class CustomPolicy(FeedForwardPolicy):
-        def __init__(self, *args, **kwargs):
-            super(CustomPolicy, self).__init__(*args, layers=[64, 64], layer_norm=False, feature_extraction="mlp", **kwargs)
-
-    if NN_TUNING:
-        param_list = []
-    
-        nn_architectures = [[64, 64], [512, 256, 128], [256, 128, 64]]
-        #nn_architectures = [[64, 64, 64], [1024, 512, 256], [512, 256, 128, 64]]
-        gammas = [0.99, 0.95]
-        #decays = [0.0]
-        for gamma in gammas:
-            for nn_layers in nn_architectures:
-                params = {
-                          "nn_layers": nn_layers,
-                          "gamma": gamma
-                          }
-                param_list.append(params)
-
-        for param_set in param_list:
-            # Custom MLP policy
-            class CustomPolicy(FeedForwardPolicy):
-                def __init__(self, *args, **kwargs):
-                    super(CustomPolicy, self).__init__(*args, layers=params['nn_layers'], layer_norm=False, feature_extraction="mlp", **kwargs)
-                       
-            launch_learn(param_set)
-        
-    elif TUNING:
-        param_list = []
-        
-        slack_rewards = [-0.0005, -0.001, -0.005, -0.01]
-        energy_costs = [-0.0005, -0.001, -0.005, -0.01]
-
-        for slack_reward in slack_rewards:
-            for energy_cost in energy_costs:
-                params = {
-                          "slack": slack_reward,
-                          "energy": energy_cost
-                          }
-                param_list.append(params)
-
-        for param_set in param_list:
-            launch_learn(param_set)
-    else:        
-        ExpertNavigation(sys.argv, dict())
+    ExpertNavigation(sys.argv, dict())
 
 
