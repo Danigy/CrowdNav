@@ -1,5 +1,5 @@
 from crowd_sim.envs.utils.agent import Agent
-from crowd_sim.envs.utils.state import JointState
+from crowd_sim.envs.utils.state import JointState, TensorFlowState
 
 
 class Robot(Agent):
@@ -9,5 +9,12 @@ class Robot(Agent):
         if self.policy is None:
             raise AttributeError('Policy attribute has to be set!')
         state = JointState(self.get_full_state(), ob)
+        action = self.policy.predict(state)
+        return action
+    
+    def orca_act(self, ob):
+        if self.policy is None:
+            raise AttributeError('Policy attribute has to be set!')
+        state = TensorFlowState(self.get_full_state(), ob)
         action = self.policy.predict(state)
         return action

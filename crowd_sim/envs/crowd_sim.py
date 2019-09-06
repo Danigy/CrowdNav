@@ -13,6 +13,7 @@ import rvo2
 from matplotlib import patches
 from numpy.linalg import norm
 import sys, os
+import atexit
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '.'))
 sys.path.append(os.path.join(os.path.dirname(__file__), 'envs'))
@@ -35,11 +36,18 @@ import random
 import math
 import time
 
+from collections import OrderedDict
+
+atexit.register(sys.exit)
+atexit.register(pygame.quit)
+atexit.register(pygame.display.quit)
+
 class CrowdSim(gym.Env):
     metadata = {'render.modes': ['human']}
 
     def __init__(self, success_reward=None, collision_penalty=None, time_to_collision_penalty=None, discomfort_dist=None,
-                       discomfort_penalty_factor=None, potential_reward_weight=None, slack_reward=None, energy_cost=None, draw_screen=None):
+                       discomfort_penalty_factor=None, potential_reward_weight=None, slack_reward=None,
+                       energy_cost=None, draw_screen=None, expert_policy=False):
         """
         Movement simulation for n+1 agents
         Agent can either be human or robot.
@@ -83,8 +91,15 @@ class CrowdSim(gym.Env):
         self.n_sensors = 0
         self.sensor_range = 25 # meters
         self.n_episodes = 0
+        self.n_steps = 0
+        self.n_successes = 0
+        self.n_collisions = 0
+        self.n_timeouts = 0
+        self.n_personal_space_violations = 0
+        self.n_cutting_off = 0
         
         self.draw_screen = draw_screen
+        self.expert_policy = expert_policy
                 
         ''' 'OpenAI Gym Requirements '''
         self._seed(123)
@@ -487,6 +502,8 @@ class CrowdSim(gym.Env):
         Set px, py, gx, gy, vx, vy, theta for robot and humans
         :return:
         """
+        self.n_steps = 0
+        
         if self.robot is None:
             raise AttributeError('robot has to be set!')
         assert phase in ['train', 'val', 'test']
@@ -567,8 +584,8 @@ class CrowdSim(gym.Env):
 
         state = self._get_state()
         
-        if debug:
-            return ob
+        if debug or self.expert_policy:
+            return state, ob
         else:
             return state
 
@@ -590,7 +607,7 @@ class CrowdSim(gym.Env):
             # Only allow forward motion and rotations
             action = ActionRot((action[0] + 1.0) / 2.0, action[1])
             
-        self.n_episodes += 1
+        self.n_steps += 1
 
         # Compute the next human actions from the current observations
         human_actions = []
@@ -721,8 +738,8 @@ class CrowdSim(gym.Env):
             self.surface.fill(THECOLORS["black"])
             #self.surface2.fill(THECOLORS["black"])
 
-        if debug:
-            return ob, reward, done, info
+        if debug or self.expert_policy:
+            return state, ob, reward, done, info
         else:
             return state, reward, done, info
 
@@ -763,7 +780,7 @@ class CrowdSim(gym.Env):
             self.humans[i].px, self.humans[i].py, self.humans[i].theta = positions[i]
             self.humans[i].vx, self.humans[i].vy, self.humans[i].vr = velocities[i]
 
-    def _get_reward(self, action):
+    def _get_reward(self, action, debug=False):
         if self.robot.kinematics == 'holonomic':
             action = ActionXY(action[0], action[1])
         else:
@@ -823,22 +840,28 @@ class CrowdSim(gym.Env):
         reward = 0
         discomfort = 0
         potent = 0
+        
+        info_dict = OrderedDict()
                 
         if self.global_time >= self.time_limit - 1:
+            self.n_timeouts += 1
             reward = 0
             done = True
             info = Timeout()
         elif collision:
+            self.n_collisions += 1
             reward = self.collision_penalty
             done = True
             info = Collision()
         elif reaching_goal:
+            self.n_successes += 1
             reward = self.success_reward
             done = True
             info = ReachGoal()
         elif velocity_dmin < self.discomfort_dist:
             # penalize agent for getting too close
             # adjust the reward based on FPS
+            self.n_personal_space_violations += 1
             reward = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
             discomfort = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
             done = False
@@ -846,7 +869,7 @@ class CrowdSim(gym.Env):
         else:
             done = False
             info = Nothing()
-            
+
         if not done:
             # time cost (slack reward)
             reward += self.slack_reward * self.time_step
@@ -855,9 +878,8 @@ class CrowdSim(gym.Env):
             reward += self.energy_cost * np.linalg.norm(np.array([self.robot.vx, self.robot.vy])) * self.time_step
             #print(-0.01 * np.linalg.norm(np.array([self.robot.vx, self.robot.vy])))
             
-        # Get initial goal potential and collision potential
-        if not done:
-            if self.n_episodes == 1:
+            # Get initial goal potential and collision potential
+            if self.n_steps == 1:
                 self.initial_potential = self.get_potential()
                 self.normalized_potential = 1.0
             
@@ -870,12 +892,26 @@ class CrowdSim(gym.Env):
             reward += potential_reward * self.potential_reward_weight
             
             self.normalized_potential = new_normalized_potential
-            info = Nothing
+            info = Nothing()
+        else:
+            self.n_episodes += 1
             
         #time.sleep(0.25)
             
         #print("Collision?", collision, " Success?", reaching_goal, " Discomfort: ", discomfort, " Potential", potent, " Reward", reward)
 
+        if not debug:
+            info_dict = {'episodes': self.n_episodes,
+                         'successes': self.n_successes,
+                         'collisions': self.n_collisions,
+                         'timeouts': self.n_timeouts,
+                         'personal_space_violations': self.n_personal_space_violations,
+                         'cutting_off': self.n_cutting_off,
+                         'success_rate': 100 * self.n_successes / (self.n_episodes + 1),
+                         'collision_rate': 100 * self.n_collisions / (self.n_episodes + 1)
+                         }
+                         
+            info = info_dict
 
         return reward, done, info
 

@@ -44,7 +44,7 @@ class ObservableState(object):
         return other + (self.px, self.py, self.theta, self.vx, self.vy, self.vr, self.radius, self.personal_space)
 
     def __str__(self):
-        return ' '.join([str(x) for x in [self.px, self.py, self.theta, self.vx, self.vy, self.vr, self.radius, self.personal_space, self.theta]])
+        return ' '.join([str(x) for x in [self.px, self.py, self.theta, self.vx, self.vy, self.vr, self.radius, self.personal_space]])
 
 
 class JointState(object):
@@ -53,5 +53,10 @@ class JointState(object):
         for human_state in human_states:
             assert isinstance(human_state, ObservableState)
 
+        self.self_state = self_state
+        self.human_states = human_states
+
+class TensorFlowState(object):
+    def __init__(self, self_state, human_states):
         self.self_state = self_state
         self.human_states = human_states

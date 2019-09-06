@@ -5,24 +5,22 @@ import random
 import os.path
 import sys
 import datetime
-import gym
-import crowd_sim
-from crowd_sim.envs.utils.info import *
 import tensorflow as tf
 
 from stable_baselines.common.vec_env import DummyVecEnv
 from stable_baselines.sac.policies import MlpPolicy, FeedForwardPolicy
 from stable_baselines import SAC
+from stable_baselines.gail import ExpertDataset
 
 from collections import OrderedDict
 import argparse
 import configparser
 import json
 
+import gym
+import crowd_sim
+from crowd_sim.envs.utils.info import *
 from crowd_sim.envs.utils.robot import Robot
-from crowd_nav.utils.trainer import Trainer
-from crowd_nav.utils.memory import ReplayMemory
-from crowd_nav.utils.explorer import Explorer
 from crowd_nav.policy.policy_factory import policy_factory
 
 ENV_NAME = 'CrowdSim-v0'
@@ -40,6 +38,7 @@ class SimpleNavigation():
         parser.add_argument('--policy', type=str, default='multi_human_rl')
         parser.add_argument('--policy_config', type=str, default='configs/policy.config')
         parser.add_argument('--train_config', type=str, default='configs/train.config')
+        parser.add_argument('-p', '--pre_train', default=False, action='store_true')
         
         args = parser.parse_args()
         #args = vars(parsed_args)
@@ -86,7 +85,7 @@ class SimpleNavigation():
             personal_space_penalty = None          
             slack_reward = -0.001
             energy_cost = -0.001
-            learning_rate = 0.001
+            learning_rate = 0.0005
             params['nn_layers'] = nn_layers= [64, 64]
             gamma = 0.9
             decay = 0
@@ -114,46 +113,84 @@ class SimpleNavigation():
         
         print("Gym environment created.")
         
-        env.seed(321)
-        np.random.seed(321)
+        env.seed()
+        np.random.seed()
         
         robot = Robot(env_config, 'robot')
         robot.set_policy(policy)
         
         env.set_robot(robot)
         env.configure(env_config)
+    
 
         env = DummyVecEnv([lambda: env])
 
         if TUNING or NN_TUNING:
-            tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_' + self.string_to_filename(json.dumps(params))
-            save_weights_file = tb_log_dir + '/dqn_' + ENV_NAME + '_weights_' + self.string_to_filename(json.dumps(params)) +'.h5f'
+            if args.pre_train:
+                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_pretrain_' + self.string_to_filename(json.dumps(params))
+            else:
+                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_' + self.string_to_filename(json.dumps(params))
+
+            save_weights_file = tb_log_dir + '/sac_' + ENV_NAME + '_weights_' + self.string_to_filename(json.dumps(params)) +'.h5f'
 
         else:
-            tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_' + self.string_to_filename(json.dumps(params))
-#            tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/dqn_npeds_' + str(N_PEDESTRIANS) + '_n_obs_' + str(N_OBSTACLES) + '_' + str(env.observation_space.shape) + '_' + datetime.datetime.now().strftime("%m-%d-%Y-%H-%M")
+            if args.pre_train:
+                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_pretrain_' + self.string_to_filename(json.dumps(params))
+            else:
+                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_' + self.string_to_filename(json.dumps(params))
+
             save_weights_file = tb_log_dir + '/sac' + ENV_NAME + '_weights_final' + '.h5f'
 
         weights_path = os.path.join(tb_log_dir, "model_weights.{epoch:02d}.h5")
  
-        model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate,  buffer_size=100000)
+        model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate,  buffer_size=50000)
         
+        if args.pre_train:
+            pretrain_log_dir = os.path.expanduser('~') + '/tensorboard_logs/orca_' + self.string_to_filename(json.dumps(params))
+            pretrained_weights_file = pretrain_log_dir + '/orca_weights_final.npz'
+    
+            dataset = ExpertDataset(expert_path=pretrained_weights_file, traj_limitation=1000, batch_size=128)
+            #model.pretrain(dataset, n_epochs=1000, learning_rate=1e-3, adam_epsilon=1e-8, val_interval=10)
+            model.pretrain(dataset, n_epochs=200)
+            
+            obs = env.reset()
+            n_episodes = 0
+            print("Testing pre-trained model...")
+            while n_episodes < 100:
+                action, _states = model.predict(obs)
+                obs, rewards, done, info = env.step(action)
+                if done:
+                    n_episodes += 1
+                    print(info)
+                    obs = env.reset()
+                    
+            #env.close()
+            #os._exit(0)
+
         if args.test:
             print("Testing!")
             model = SAC.load(args.weights)
             obs = env.reset()
-            while True:
+            n_episodes = 0
+            while n_episodes < 100:
                 action, _states = model.predict(obs)
-                obs, rewards, dones, info = env.step(action)
-            os.exit(0)
+                obs, rewards, done, info = env.step(action)
+                if done:
+                    n_episodes += 1
+                    print(info)
+                    obs = env.reset()
 
-        #print("Holonomic?", HOLONOMIC)
-        model.learn(total_timesteps=1000000)
+            env.close()
+            os._exit(0)
+
+        model.learn(total_timesteps=500000, log_interval=100)
         model.save(tb_log_dir + "/stable_baselines")
         print(">>>>> End testing <<<<<", self.string_to_filename(json.dumps(params)))
         print("Final weights saved at: ", tb_log_dir + "/stable_baselines.pkl")
         
         print("TEST COMMAND: python3 py3_learning.py --test --weights ", tb_log_dir + "/stable_baselines.pkl")
+        
+        env.close()
     
     def create_base_lidar_model(self, input_size, output_size, nn_layers):
         base_model = OrderedDict()

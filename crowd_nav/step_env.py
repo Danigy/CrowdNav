@@ -55,10 +55,6 @@ def main():
     
     # configure policy
     policy = policy_factory[args.policy]()
-#     if not policy.trainable:
-#         parser.error('Policy has to be trainable')
-#     if args.policy_config is None:
-#         parser.error('Policy config has to be specified for a trainable network')
     policy_config = configparser.RawConfigParser()
     policy_config.read(args.policy_config)
     policy.configure(policy_config)
@@ -105,12 +101,12 @@ def main():
     
     if args.visualize:
         while True:
-            ob = env.reset(args.phase, args.test_case, debug=True)
+            ob, state = env.reset(args.phase, args.test_case, debug=True)
             done = False
             #last_pos = np.array(robot.get_position())
             while not done:
                 action = robot.act(ob)
-                ob, _, done, info = env.step(action, update=True, debug=True, display_fps=1000)
+                ob, state, _, done, info = env.step(action, update=True, debug=True, display_fps=1000)
                 #time.sleep(0.25)
                 #current_pos = np.array(robot.get_position())
                 #logging.debug('Speed: %.2f', np.linalg.norm(current_pos - last_pos) / robot.time_step)
