@@ -57,7 +57,7 @@ class SimpleNavigation():
             slack_reward = None
             energy_cost = None
             slack_reward = None
-            learning_rate = 0.0005
+            learning_rate = 0.001
         elif TUNING:
             success_reward = 1.0
             collision_penalty = -0.25
@@ -85,7 +85,7 @@ class SimpleNavigation():
             personal_space_penalty = None          
             slack_reward = -0.001
             energy_cost = -0.001
-            learning_rate = 0.001
+            learning_rate = 0.0005
             params['nn_layers'] = nn_layers= [64, 64]
             gamma = 0.9
             decay = 0
@@ -128,17 +128,17 @@ class SimpleNavigation():
 
         if TUNING or NN_TUNING:
             if args.pre_train:
-                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_pretrain_' + self.string_to_filename(json.dumps(params))
+                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_pretrain_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))
             else:
-                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_' + self.string_to_filename(json.dumps(params))
+                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))
 
             save_weights_file = tb_log_dir + '/sac_' + ENV_NAME + '_weights_' + self.string_to_filename(json.dumps(params)) +'.h5f'
 
         else:
             if args.pre_train:
-                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_pretrain_' + self.string_to_filename(json.dumps(params))
+                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_pretrain_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))
             else:
-                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_' + self.string_to_filename(json.dumps(params))
+                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))
 
             save_weights_file = tb_log_dir + '/sac' + ENV_NAME + '_weights_final' + '.h5f'
 
@@ -184,7 +184,7 @@ class SimpleNavigation():
             env.close()
             os._exit(0)
 
-        model.learn(total_timesteps=200000, log_interval=100)
+        model.learn(total_timesteps=500000, log_interval=100)
         model.save(tb_log_dir + "/stable_baselines")
         print(">>>>> End testing <<<<<", self.string_to_filename(json.dumps(params)))
         print("Final weights saved at: ", tb_log_dir + "/stable_baselines.pkl")
