@@ -100,14 +100,17 @@ def main():
     robot.print_info()
     
     if args.visualize:
-        while True:
-            ob, state = env.reset(args.phase, args.test_case, debug=True)
+        n_episodes = 0
+
+        while n_episodes < 100:
+            state, ob = env.reset(args.phase, args.test_case, debug=True)
             done = False
-            #last_pos = np.array(robot.get_position())
             while not done:
                 action = robot.act(ob)
-                ob, state, _, done, info = env.step(action, update=True, debug=True, display_fps=1000)
-                #time.sleep(0.25)
+                state, ob, _, done, info = env.step(action, update=True, debug=True, display_fps=1000)
+            n_episodes += 1
+            print(info)
+            obs = env.reset()
                 #current_pos = np.array(robot.get_position())
                 #logging.debug('Speed: %.2f', np.linalg.norm(current_pos - last_pos) / robot.time_step)
                 #last_pos = current_pos
@@ -122,7 +125,9 @@ def main():
             #    logging.info('Average time for humans to reach goal: %.2f', sum(human_times) / len(human_times))
     else:
         explorer.run_k_episodes(env.case_size[args.phase], args.phase, print_failure=True)
-    
+
+    env.close()
+    os._exit(0)
 #     if args.visualize:
 #         episodes = 0
 #         ob = env.reset(args.phase, args.test_case, debug=True)

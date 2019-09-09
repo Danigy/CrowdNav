@@ -121,6 +121,25 @@ class Agent(object):
         else:
             assert isinstance(action, ActionRot)
 
+#     def compute_position(self, action, delta_t, no_action=False):
+#         self.check_validity(action)
+#         
+#         if no_action:
+#             px = self.px
+#             py = self.py
+#             theta = self.theta            
+#         else:  
+#             if self.kinematics == 'holonomic':
+#                 px = self.px + action.vx * self.max_linear_velocity / np.sqrt(2.0) * delta_t
+#                 py = self.py + action.vy * self.max_linear_velocity / np.sqrt(2.0) * delta_t
+#                 theta = self.theta
+#             else:
+#                 theta = (self.theta + action.r * self.max_angular_velocity * delta_t) % (2 * np.pi)
+#                 px = self.px + np.cos(theta) * action.v * delta_t * self.max_linear_velocity / np.sqrt(2.0)
+#                 py = self.py + np.sin(theta) * action.v * delta_t * self.max_linear_velocity / np.sqrt(2.0)
+# 
+#         return px, py, theta
+
     def compute_position(self, action, delta_t, no_action=False):
         self.check_validity(action)
         
@@ -130,16 +149,16 @@ class Agent(object):
             theta = self.theta            
         else:  
             if self.kinematics == 'holonomic':
-                px = self.px + action.vx * self.max_linear_velocity / np.sqrt(2.0) * delta_t
-                py = self.py + action.vy * self.max_linear_velocity / np.sqrt(2.0) * delta_t
+                px = self.px + action.vx * delta_t
+                py = self.py + action.vy * delta_t
                 theta = self.theta
             else:
-                theta = (self.theta + action.r * self.max_angular_velocity * delta_t) % (2 * np.pi)
-                px = self.px + np.cos(theta) * action.v * delta_t * self.max_linear_velocity / np.sqrt(2.0)
-                py = self.py + np.sin(theta) * action.v * delta_t * self.max_linear_velocity / np.sqrt(2.0)
+                theta = (self.theta + action.r * delta_t) % (2 * np.pi)
+                px = self.px + np.cos(theta) * action.v * delta_t
+                py = self.py + np.sin(theta) * action.v * delta_t
 
         return px, py, theta
-
+    
     def step(self, action):
         """
         Perform an action and update the state
@@ -150,13 +169,31 @@ class Agent(object):
         self.px, self.py, self.theta = pos
         
         if self.kinematics == 'holonomic':
-            self.vx = action.vx * self.max_linear_velocity / np.sqrt(2.0)
-            self.vy = action.vy * self.max_linear_velocity / np.sqrt(2.0)
+            self.vx = action.vx
+            self.vy = action.vy
             self.vr = 0.0
         else:
-            self.vx = action.v * np.cos(self.theta) * self.max_linear_velocity / np.sqrt(2.0)
-            self.vy = action.v * np.sin(self.theta) * self.max_linear_velocity / np.sqrt(2.0)
-            self.vr = action.r * self.max_angular_velocity
+            self.vx = action.v * np.cos(self.theta)
+            self.vy = action.v * np.sin(self.theta)
+            self.vr = action.r
+
+#     def step(self, action):
+#         """
+#         Perform an action and update the state
+#         """
+#         self.check_validity(action)
+#         
+#         pos = self.compute_position(action, self.time_step)
+#         self.px, self.py, self.theta = pos
+#         
+#         if self.kinematics == 'holonomic':
+#             self.vx = action.vx * self.max_linear_velocity / np.sqrt(2.0)
+#             self.vy = action.vy * self.max_linear_velocity / np.sqrt(2.0)
+#             self.vr = 0.0
+#         else:
+#             self.vx = action.v * np.cos(self.theta) * self.max_linear_velocity / np.sqrt(2.0)
+#             self.vy = action.v * np.sin(self.theta) * self.max_linear_velocity / np.sqrt(2.0)
+#             self.vr = action.r * self.max_angular_velocity
 
     def reached_destination(self):
         return norm(np.array(self.get_position()) - np.array(self.get_goal_position())) < self.radius

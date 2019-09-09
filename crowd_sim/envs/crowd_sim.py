@@ -46,7 +46,7 @@ class CrowdSim(gym.Env):
 
     def __init__(self, success_reward=None, collision_penalty=None, time_to_collision_penalty=None, discomfort_dist=None,
                        discomfort_penalty_factor=None, potential_reward_weight=None, slack_reward=None,
-                       energy_cost=None, draw_screen=None, expert_policy=False):
+                       energy_cost=None, draw_screen=None, expert_policy=False, testing=False):
         """
         Movement simulation for n+1 agents
         Agent can either be human or robot.
@@ -99,6 +99,7 @@ class CrowdSim(gym.Env):
         
         self.draw_screen = draw_screen
         self.expert_policy = expert_policy
+        self.testing = testing
                 
         ''' 'OpenAI Gym Requirements '''
         self._seed(123)
@@ -124,7 +125,7 @@ class CrowdSim(gym.Env):
         ped_shape = pymunk.Circle(ped_body, r)
         ped_shape.elasticity = 1.0
         ped_body.position = x, y
-        ped_body.velocity = random.randint(-self.max_ped_velocity, self.max_ped_velocity) * Vec2d(0, 1)
+        ped_body.velocity = Vec2d(0, 0)
         ped_shape.color = THECOLORS["orange"]
         self.space.add(ped_body, ped_shape)
         return [ped_body, ped_shape]
@@ -198,9 +199,7 @@ class CrowdSim(gym.Env):
         # Physics stuff.
         self.space = pymunk.Space()
         self.space.gravity = pymunk.Vec2d(0., 0.)
-        
-        self.max_ped_velocity = 50
-        
+                
         # List to hold the pedestrians
         self.pedestrians = []
 
@@ -209,7 +208,7 @@ class CrowdSim(gym.Env):
             self.create_robot(self.width/2, self.height/2, 0, self.scale_factor * self.robot.radius)
         
         self.action_space = spaces.Box(-1.0, 1.0, shape=[2,])
-        self.observation_space = spaces.Box(-1.0, 1.0, shape=[self.n_sensors + 2 + 4 * self.human_num,])
+        self.observation_space = spaces.Box(-1.0, 1.0, shape=[self.n_sensors + 2 + 2 * self.human_num,])
         
     def set_robot(self, robot):
         self.robot = robot
@@ -363,7 +362,8 @@ class CrowdSim(gym.Env):
         else:
             sign = 1
         while True:
-            px = np.random.random() * self.square_width * 0.5 * sign
+            #px = np.random.random() * self.square_width * 0.5 * sign
+            px = self.square_width * 0.5 * sign
             py = (np.random.random() - 0.5) * self.hallway_width
 
             collide = False
@@ -374,7 +374,8 @@ class CrowdSim(gym.Env):
             if not collide:
                 break
         while True:
-            gx = np.random.random() * self.square_width * 0.5 * -sign
+            #gx = np.random.random() * self.square_width * 0.5 * -sign
+            gx = -sign * self.square_width * 0.5
             gy = (np.random.random() - 0.5) * self.hallway_width
             #gx = px
             #gy = py
@@ -458,6 +459,8 @@ class CrowdSim(gym.Env):
                 py = human.py - self.robot.py
                 vx = human.vx - self.robot.vx
                 vy = human.vy - self.robot.vy
+                px_future = (human.px + human.vx * self.lookahead_interval) - self.robot.px
+                py_future = (human.py + human.vy * self.lookahead_interval) - self.robot.py
             else:
                 px = human.px - self.robot.px
                 py = human.py - self.robot.py
@@ -478,11 +481,20 @@ class CrowdSim(gym.Env):
                 vy = vy_rotated
                 
             #print(self.robot.theta, np.sqrt(vx**2 + vy**2), px, py, gx, gy, vx, vy)
+            
+            state.append(px_future / self.sensor_range)
+            state.append(py_future / self.sensor_range)
+            #state.append(px / self.sensor_range)
+            #state.append(py / self.sensor_range)
+            #state.append((px + vx * self.lookahead_interval) / self.sensor_range)
+            #state.append((py + vy * self.lookahead_interval) / self.sensor_range)
+            #state.append(vx / self.robot.max_linear_velocity)
+            #state.append(vy / self.robot.max_linear_velocity)
                 
-            state.append(px / self.sensor_range)
-            state.append(py / self.sensor_range)
-            state.append(vx / self.robot.max_linear_velocity)
-            state.append(vy / self.robot.max_linear_velocity)
+#             state.append(px / self.sensor_range)
+#             state.append(py / self.sensor_range)
+#             state.append(vx / self.robot.max_linear_velocity)
+#             state.append(vy / self.robot.max_linear_velocity)
             
 #             if self.draw_screen:
 #                 rel_vel = Vec2d(vx_rel, vy_rel)                
@@ -601,10 +613,12 @@ class CrowdSim(gym.Env):
 
         # Convert the action variables to robot actions
         if self.robot.kinematics == 'holonomic':
-            action = ActionXY(action[0], action[1])                        
+            scaled_action = ActionXY(action[0] * self.robot.v_pref, action[1] * self.robot.v_pref)
+            #action = ActionXY(action[0], action[1])
         else:
             # Only allow forward motion and rotations
-            action = ActionRot((action[0] + 1.0) / 2.0, action[1])
+            #action = ActionRot(((action[0] + 1.0) / 2.0) * self.robot.v_pref, action[1])
+            scaled_action = ActionRot(((action[0] + 1.0) / 2.0) * self.robot.v_pref, action[1])
             
         self.n_steps += 1
 
@@ -632,7 +646,7 @@ class CrowdSim(gym.Env):
 #                 self.attention_weights.append(self.robot.policy.get_attention_weights())
 
             # Move the robot
-            self.robot.step(action)
+            self.robot.step(scaled_action)
             
             # Move each human
             for i, human_action in enumerate(human_actions):
@@ -662,7 +676,7 @@ class CrowdSim(gym.Env):
         state = self._get_state()
             
         # Compute the reward
-        reward, done, info = self._get_reward(action)
+        reward, done, info = self._get_reward(scaled_action)
 
         # Update Pygame screen
         if self.draw_screen:
@@ -780,11 +794,6 @@ class CrowdSim(gym.Env):
             self.humans[i].vx, self.humans[i].vy, self.humans[i].vr = velocities[i]
 
     def _get_reward(self, action, debug=False):
-        if self.robot.kinematics == 'holonomic':
-            action = ActionXY(action[0], action[1])
-        else:
-            action = ActionRot(action[0], action[1])
-            
         # collision detection
         dmin = float('inf')
         collision = False
@@ -832,7 +841,12 @@ class CrowdSim(gym.Env):
             if velocity_dist < velocity_dmin:
                 velocity_dmin = velocity_dist
 
-        reaching_goal = np.linalg.norm(np.array([self.robot.px, self.robot.py]) - np.array([self.robot.gx, self.robot.gy])) < 2.0 * self.robot.radius
+        distance_from_goal = np.linalg.norm(np.array([self.robot.px, self.robot.py]) - np.array([self.robot.gx, self.robot.gy]))
+
+        if self.testing:
+            reaching_goal = distance_from_goal < 3.0 * self.robot.radius
+        else:
+            reaching_goal = distance_from_goal < 2.0 * self.robot.radius
 
         done = False
         
@@ -857,14 +871,22 @@ class CrowdSim(gym.Env):
             reward = self.success_reward
             done = True
             info = ReachGoal()
-        elif velocity_dmin < self.discomfort_dist:
+        elif dmin < self.discomfort_dist:
             # penalize agent for getting too close
             # adjust the reward based on FPS
             self.n_personal_space_violations += 1
-            reward = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
-            discomfort = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
+            reward = (dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
+            #discomfort = (dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
             done = False
-            info = Danger(velocity_dmin)
+            info = Danger(dmin)
+#         elif velocity_dmin < self.discomfort_dist:
+#             # penalize agent for getting too close
+#             # adjust the reward based on FPS
+#             self.n_personal_space_violations += 1
+#             reward = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
+#             #discomfort = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
+#             done = False
+#             info = Danger(velocity_dmin)
         else:
             done = False
             info = Nothing()
@@ -888,6 +910,7 @@ class CrowdSim(gym.Env):
             potential_reward = self.normalized_potential - new_normalized_potential
             
             potent = potential_reward * self.potential_reward_weight
+            #reward += potential_reward * self.potential_reward_weight / self.robot.v_pref
             reward += potential_reward * self.potential_reward_weight
             
             self.normalized_potential = new_normalized_potential
@@ -906,8 +929,8 @@ class CrowdSim(gym.Env):
                          'timeouts': self.n_timeouts,
                          'personal_space_violations': self.n_personal_space_violations,
                          'cutting_off': self.n_cutting_off,
-                         'success_rate': 100 * self.n_successes / (self.n_episodes + 1),
-                         'collision_rate': 100 * self.n_collisions / (self.n_episodes + 1)
+                         'success_rate': 0 if self.n_episodes == 0 else 100 * self.n_successes / self.n_episodes,
+                         'collision_rate': 0 if self.n_episodes == 0 else 100 * self.n_collisions / self.n_episodes
                          }
                          
             info = info_dict
@@ -915,11 +938,6 @@ class CrowdSim(gym.Env):
         return reward, done, info
 
     def _get_reward_invisible_robot(self, action):
-        if self.robot.kinematics == 'holonomic':
-            action = ActionXY(action[0], action[1])
-        else:
-            action = ActionRot(action[0], action[1])
-            
         # collision detection
         dmin = float('inf')
         collision = False

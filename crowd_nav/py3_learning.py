@@ -9,6 +9,7 @@ import tensorflow as tf
 
 from stable_baselines.common.vec_env import DummyVecEnv
 from stable_baselines.sac.policies import MlpPolicy, FeedForwardPolicy
+from stable_baselines.common.policies import MlpLstmPolicy
 from stable_baselines import SAC
 from stable_baselines.gail import ExpertDataset
 
@@ -80,13 +81,15 @@ class SimpleNavigation():
             params = dict()
             success_reward = None
             potential_reward_weight = None
-            collision_penalty = None
+            #collision_penalty = None
+            params['collision_penalty'] = collision_penalty = -1.0
             time_to_collision_penalty = None
             personal_space_penalty = None          
-            slack_reward = -0.001
-            energy_cost = -0.001
-            learning_rate = 0.0005
-            params['nn_layers'] = nn_layers= [64, 64]
+            slack_reward = None
+            params['energy_cost'] = energy_cost = -0.0005
+            learning_rate = 0.001
+            params['nn_layers'] = nn_layers = [64, 64]
+            params['ped_state'] = 'future_position_500000_vpref_0.5'
             gamma = 0.9
             decay = 0
             batch_norm = 'no'
@@ -109,7 +112,7 @@ class SimpleNavigation():
         
         env = gym.make('CrowdSim-v0', success_reward=success_reward, collision_penalty=collision_penalty, time_to_collision_penalty=time_to_collision_penalty,
                        discomfort_dist=None, discomfort_penalty_factor=None, potential_reward_weight=potential_reward_weight, slack_reward=slack_reward,
-                       energy_cost=slack_reward, draw_screen=draw_screen)
+                       energy_cost=slack_reward, draw_screen=draw_screen, testing=args.test)
         
         print("Gym environment created.")
         
@@ -144,7 +147,7 @@ class SimpleNavigation():
 
         weights_path = os.path.join(tb_log_dir, "model_weights.{epoch:02d}.h5")
  
-        model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate,  buffer_size=50000)
+        model = SAC(CustomPolicy, env,verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate,  buffer_size=50000)
         
         if args.pre_train:
             pretrain_log_dir = os.path.expanduser('~') + '/tensorboard_logs/orca_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))            
@@ -162,7 +165,7 @@ class SimpleNavigation():
                 obs, rewards, done, info = env.step(action)
                 if done:
                     n_episodes += 1
-                    print(info)
+                    print(sorted(info))
                     obs = env.reset()
                     
             #env.close()
@@ -178,7 +181,8 @@ class SimpleNavigation():
                 obs, rewards, done, info = env.step(action)
                 if done:
                     n_episodes += 1
-                    print(info)
+                    del info[0]['terminal_observation']
+                    print(sorted(info))
                     obs = env.reset()
 
             env.close()
@@ -189,7 +193,7 @@ class SimpleNavigation():
         print(">>>>> End testing <<<<<", self.string_to_filename(json.dumps(params)))
         print("Final weights saved at: ", tb_log_dir + "/stable_baselines.pkl")
         
-        print("TEST COMMAND: python3 py3_learning.py --test --weights ", tb_log_dir + "/stable_baselines.pkl")
+        print("TEST COMMAND: python3 py3_learning.py --test --weights ", tb_log_dir + "/stable_baselines.pkl --draw_screen")
         
         env.close()
     
