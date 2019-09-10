@@ -363,7 +363,7 @@ class CrowdSim(gym.Env):
             sign = 1
         while True:
             #px = np.random.random() * self.square_width * 0.5 * sign
-            px = self.square_width * 0.5 * sign
+            px = self.square_width * (0.5 + np.random.random() * 0.1) * sign
             py = (np.random.random() - 0.5) * self.hallway_width
 
             collide = False
