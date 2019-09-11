@@ -208,7 +208,7 @@ class CrowdSim(gym.Env):
             self.create_robot(self.width/2, self.height/2, 0, self.scale_factor * self.robot.radius)
         
         self.action_space = spaces.Box(-1.0, 1.0, shape=[2,])
-        self.observation_space = spaces.Box(-1.0, 1.0, shape=[self.n_sensors + 2 + 2 * self.human_num,])
+        self.observation_space = spaces.Box(-1.0, 1.0, shape=[self.n_sensors + 2 + 5 * self.human_num,])
         
     def set_robot(self, robot):
         self.robot = robot
@@ -454,13 +454,26 @@ class CrowdSim(gym.Env):
         state.append(gy / self.sensor_range)
         
         for i, human in enumerate(self.humans):
+            px_future = (human.px + human.vx * self.lookahead_interval) - self.robot.px
+            py_future = (human.py + human.vy * self.lookahead_interval) - self.robot.py
+                
             if self.robot.kinematics == 'holonomic':
                 px = human.px - self.robot.px
                 py = human.py - self.robot.py
                 vx = human.vx - self.robot.vx
                 vy = human.vy - self.robot.vy
-                px_future = (human.px + human.vx * self.lookahead_interval) - self.robot.px
-                py_future = (human.py + human.vy * self.lookahead_interval) - self.robot.py
+                try:
+                    time_to_collision = -1.0 * (px**2 + py**2) / (vx * px + vy * py)
+                except:
+                    time_to_collision = -1.0
+                
+                if time_to_collision < 0:
+                    time_to_collision = -1.0
+                else:
+                    time_to_collision = 1.0 - np.tanh(time_to_collision / 10.0)
+            
+                #print(time_to_collision)
+            
             else:
                 px = human.px - self.robot.px
                 py = human.py - self.robot.py
@@ -470,6 +483,12 @@ class CrowdSim(gym.Env):
                 
                 px = px_rotated
                 py = py_rotated
+                
+                px_future_rotated = px_future * cos_theta - py_future * sin_theta
+                py_future_rotated = px_future * sin_theta + py_future * cos_theta
+                
+                px_future = px_future_rotated
+                py_future = py_future_rotated
 
                 vx_rel = human.vx - self.robot.vx
                 vy_rel = human.vy - self.robot.vy
@@ -482,8 +501,9 @@ class CrowdSim(gym.Env):
                 
             #print(self.robot.theta, np.sqrt(vx**2 + vy**2), px, py, gx, gy, vx, vy)
             
-            state.append(px_future / self.sensor_range)
-            state.append(py_future / self.sensor_range)
+            #state.append(px_future / self.sensor_range)
+            #state.append(py_future / self.sensor_range)
+            #state.append(time_to_collision)
             #state.append(px / self.sensor_range)
             #state.append(py / self.sensor_range)
             #state.append((px + vx * self.lookahead_interval) / self.sensor_range)
@@ -491,11 +511,11 @@ class CrowdSim(gym.Env):
             #state.append(vx / self.robot.max_linear_velocity)
             #state.append(vy / self.robot.max_linear_velocity)
                 
-#             state.append(px / self.sensor_range)
-#             state.append(py / self.sensor_range)
-#             state.append(vx / self.robot.max_linear_velocity)
-#             state.append(vy / self.robot.max_linear_velocity)
-            
+            state.append(px / self.sensor_range)
+            state.append(py / self.sensor_range)
+            state.append(vx / self.robot.max_linear_velocity)
+            state.append(vy / self.robot.max_linear_velocity)
+            state.append(time_to_collision)
 #             if self.draw_screen:
 #                 rel_vel = Vec2d(vx_rel, vy_rel)                
 #                 rel_pos = self.robot_body.position + 2 * self.scale_factor * rel_vel
@@ -879,14 +899,14 @@ class CrowdSim(gym.Env):
             #discomfort = (dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
             done = False
             info = Danger(dmin)
-#         elif velocity_dmin < self.discomfort_dist:
-#             # penalize agent for getting too close
-#             # adjust the reward based on FPS
-#             self.n_personal_space_violations += 1
-#             reward = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
-#             #discomfort = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
-#             done = False
-#             info = Danger(velocity_dmin)
+        elif velocity_dmin < self.discomfort_dist:
+            # penalize agent for getting too close
+            # adjust the reward based on FPS
+            self.n_personal_space_violations += 1
+            reward = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
+            #discomfort = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
+            done = False
+            info = Danger(velocity_dmin)
         else:
             done = False
             info = Nothing()

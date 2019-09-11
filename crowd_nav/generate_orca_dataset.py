@@ -100,7 +100,7 @@ class ExpertNavigation():
         
         save_weights_file = tb_log_dir + '/orca_weights_final.npz'
 
-        generate_expert_traj(self.orca_expert, save_weights_file, env, n_episodes=10000)
+        generate_expert_traj(self.orca_expert, save_weights_file, env, n_episodes=1000)
 
 #         if args.test:
 #             print("Testing!")

@@ -75,7 +75,7 @@ class SimpleNavigation():
             #learning_rate = 0.001
             if not NN_TUNING:
                 nn_layers= [512, 256, 128]
-                gamma = 0.9
+                gamma = 0.99
                 decay = 0
         else:
             params = dict()
@@ -83,16 +83,18 @@ class SimpleNavigation():
             potential_reward_weight = None
             #collision_penalty = None
             params['collision_penalty'] = collision_penalty = -1.0
+            discomfort_penalty_factor = None
             time_to_collision_penalty = None
             personal_space_penalty = None          
             slack_reward = None
-            params['energy_cost'] = energy_cost = -0.0005
-            learning_rate = 0.001
-            params['nn_layers'] = nn_layers = [64, 64]
-            params['ped_state'] = 'future_position_500000_vpref_0.5'
-            gamma = 0.9
+            energy_cost = None
+            params['nn_layers'] = nn_layers = [256, 128, 64]
+            gamma = 0.99
             decay = 0
             batch_norm = 'no'
+            params['learning_trials'] = learning_trials = 1500000
+            params['state'] = 'velocity_distance'
+            learning_rate = 0.0001
 
         # configure policy
         policy = policy_factory[args.policy]()
@@ -147,7 +149,7 @@ class SimpleNavigation():
 
         weights_path = os.path.join(tb_log_dir, "model_weights.{epoch:02d}.h5")
  
-        model = SAC(CustomPolicy, env,verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate,  buffer_size=50000)
+        model = SAC(CustomPolicy, env,verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate,  buffer_size=100000)
         
         if args.pre_train:
             pretrain_log_dir = os.path.expanduser('~') + '/tensorboard_logs/orca_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))            
@@ -160,12 +162,15 @@ class SimpleNavigation():
             obs = env.reset()
             n_episodes = 0
             print("Testing pre-trained model...")
-            while n_episodes < 100:
+            n_test_episodes = 100
+            while n_episodes < n_test_episodes:
                 action, _states = model.predict(obs)
                 obs, rewards, done, info = env.step(action)
                 if done:
                     n_episodes += 1
-                    print(sorted(info))
+                    if n_episodes == n_test_episodes:
+                    #del info['terminal_observation']
+                        print([(key, trunc(info[0][key], 1)) for key in ['success_rate', 'collision_rate', 'timeouts', 'personal_space_violations']])
                     obs = env.reset()
                     
             #env.close()
@@ -176,19 +181,21 @@ class SimpleNavigation():
             model = SAC.load(args.weights)
             obs = env.reset()
             n_episodes = 0
-            while n_episodes < 100:
+            n_test_episodes = 100
+            while n_episodes < n_test_episodes:
                 action, _states = model.predict(obs)
                 obs, rewards, done, info = env.step(action)
                 if done:
                     n_episodes += 1
-                    del info[0]['terminal_observation']
-                    print(sorted(info))
+                    #del info['terminal_observation']
+                    if n_episodes == n_test_episodes:
+                        print([(key, trunc(info[0][key], 1)) for key in ['success_rate', 'collision_rate', 'timeouts', 'personal_space_violations']])
                     obs = env.reset()
 
             env.close()
             os._exit(0)
 
-        model.learn(total_timesteps=500000, log_interval=100)
+        model.learn(total_timesteps=learning_trials, log_interval=100)
         model.save(tb_log_dir + "/stable_baselines")
         print(">>>>> End testing <<<<<", self.string_to_filename(json.dumps(params)))
         print("Final weights saved at: ", tb_log_dir + "/stable_baselines.pkl")
@@ -252,7 +259,7 @@ class SimpleNavigation():
         self_ = locals_['self']
         print(locals_, globals_)
 
-        return True    
+        return True  
     
 def launch_learn(params):
     print("Starting test with params:", params)
@@ -261,9 +268,14 @@ def launch_learn(params):
 if __name__ == '__main__':
     def pathstr(v): return os.path.abspath(v)
     
+    def trunc(f, n):
+        # Truncates/pads a float f to n decimal places without rounding
+        slen = len('%.*f' % (n, f))
+        return float(str(f)[:slen]) 
+    
     class CustomPolicy(FeedForwardPolicy):
         def __init__(self, *args, **kwargs):
-            super(CustomPolicy, self).__init__(*args, layers=[64, 64], layer_norm=False, feature_extraction="mlp", **kwargs)
+            super(CustomPolicy, self).__init__(*args, layers=[256, 128, 64], layer_norm=False, feature_extraction="mlp", **kwargs)
 
     if NN_TUNING:
         param_list = []
@@ -306,5 +318,4 @@ if __name__ == '__main__':
             launch_learn(param_set)
     else:        
         SimpleNavigation(sys.argv, dict())
-
-
+ 
