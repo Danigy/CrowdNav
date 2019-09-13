@@ -34,7 +34,7 @@ class SimpleNavigation():
         parser = argparse.ArgumentParser()
         parser.add_argument('-t', '--test', default=False, action='store_true')
         parser.add_argument('-w', '--weights', type=pathstr, required=False, help='Path to weights file')
-        parser.add_argument('-d', '--draw_screen', default=False, action='store_true')
+        parser.add_argument('-d', '--visualize', default=False, action='store_true')
         parser.add_argument('--env_config', type=str, default='configs/env.config')
         parser.add_argument('--policy', type=str, default='multi_human_rl')
         parser.add_argument('--policy_config', type=str, default='configs/policy.config')
@@ -93,7 +93,7 @@ class SimpleNavigation():
             decay = 0
             batch_norm = 'no'
             params['learning_trials'] = learning_trials = 1500000
-            params['state'] = 'velocity_distance'
+            params['kinematics'] = 'unicycle'
             learning_rate = 0.0001
 
         # configure policy
@@ -110,11 +110,11 @@ class SimpleNavigation():
         env_config = configparser.RawConfigParser()
         env_config.read(args.env_config)
         
-        draw_screen = True if args.draw_screen else None
+        visualize = True if args.visualize else None
         
         env = gym.make('CrowdSim-v0', success_reward=success_reward, collision_penalty=collision_penalty, time_to_collision_penalty=time_to_collision_penalty,
                        discomfort_dist=None, discomfort_penalty_factor=None, potential_reward_weight=potential_reward_weight, slack_reward=slack_reward,
-                       energy_cost=slack_reward, draw_screen=draw_screen, testing=args.test)
+                       energy_cost=slack_reward, visualize=visualize, testing=args.test)
         
         print("Gym environment created.")
         
@@ -195,12 +195,12 @@ class SimpleNavigation():
             env.close()
             os._exit(0)
 
-        model.learn(total_timesteps=learning_trials, log_interval=100)
+        model.learn(total_timesteps=learning_trials, log_interval=10)
         model.save(tb_log_dir + "/stable_baselines")
         print(">>>>> End testing <<<<<", self.string_to_filename(json.dumps(params)))
         print("Final weights saved at: ", tb_log_dir + "/stable_baselines.pkl")
         
-        print("TEST COMMAND: python3 py3_learning.py --test --weights ", tb_log_dir + "/stable_baselines.pkl --draw_screen")
+        print("TEST COMMAND: python3 py3_learning.py --test --weights ", tb_log_dir + "/stable_baselines.pkl --visualize")
         
         env.close()
     

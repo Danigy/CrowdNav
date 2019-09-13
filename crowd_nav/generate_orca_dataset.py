@@ -41,7 +41,7 @@ class ExpertNavigation():
         parser.add_argument('--hallway', default=False, action='store_true')
         parser.add_argument('--video_file', type=str, default=None)
         parser.add_argument('--traj', default=False, action='store_true')
-        parser.add_argument('-d', '--draw_screen', default=False, action='store_true')
+        parser.add_argument('-d', '--visualize', default=False, action='store_true')
         
         args = parser.parse_args()
         #args = vars(parsed_args)
@@ -72,11 +72,11 @@ class ExpertNavigation():
         env_config = configparser.RawConfigParser()
         env_config.read(args.env_config)
 
-        draw_screen = True if args.draw_screen else None
+        visualize = True if args.visualize else None
         
         env = gym.make('CrowdSim-v0', success_reward=success_reward, collision_penalty=collision_penalty, time_to_collision_penalty=time_to_collision_penalty,
                        discomfort_dist=None, discomfort_penalty_factor=None, potential_reward_weight=potential_reward_weight, slack_reward=slack_reward,
-                       energy_cost=slack_reward, draw_screen=draw_screen, expert_policy=True)
+                       energy_cost=slack_reward, visualize=visualize, expert_policy=True)
         
         print("Gym environment created.")
         

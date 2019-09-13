@@ -46,7 +46,7 @@ class CrowdSim(gym.Env):
 
     def __init__(self, success_reward=None, collision_penalty=None, time_to_collision_penalty=None, discomfort_dist=None,
                        discomfort_penalty_factor=None, potential_reward_weight=None, slack_reward=None,
-                       energy_cost=None, draw_screen=None, expert_policy=False, testing=False):
+                       energy_cost=None, visualize=None, expert_policy=False, testing=False, create_walls=False):
         """
         Movement simulation for n+1 agents
         Agent can either be human or robot.
@@ -93,13 +93,15 @@ class CrowdSim(gym.Env):
         self.n_steps = 0
         self.n_successes = 0
         self.n_collisions = 0
+        self.n_ped_hits_robot = 0
         self.n_timeouts = 0
         self.n_personal_space_violations = 0
         self.n_cutting_off = 0
         
-        self.draw_screen = draw_screen
+        self.visualize = visualize
         self.expert_policy = expert_policy
         self.testing = testing
+        self.create_walls = create_walls
                 
         ''' 'OpenAI Gym Requirements '''
         self._seed(123)
@@ -146,7 +148,7 @@ class CrowdSim(gym.Env):
         self.energy_cost = config.getfloat('reward', 'energy_cost')
                 
         self.lookahead_interval = config.getfloat('reward', 'lookahead_interval')        
-        self.draw_screen = self.draw_screen or config.getboolean('env', 'draw_screen')
+        self.visualize = self.visualize or config.getboolean('env', 'visualize')
         self.show_sensors = config.getboolean('env', 'show_sensors')
         self.display_fps = config.getfloat('env', 'display_fps')
 
@@ -182,7 +184,7 @@ class CrowdSim(gym.Env):
         #self.width = 1000
         #self.height = 1000
         
-        if not self.draw_screen:
+        if not self.visualize:
             os.environ["SDL_VIDEODRIVER"] = "dummy"
         
         else:
@@ -202,8 +204,35 @@ class CrowdSim(gym.Env):
                 
         # List to hold the pedestrians
         self.pedestrians = []
+        
+        # Create walls.
+        if self.create_walls:
+            self.static = [
+                pymunk.Segment(
+                    self.space.static_body,
+                    (0, 1), (0, self.height), 1),
+                pymunk.Segment(
+                    self.space.static_body,
+                    (1, self.height), (self.width, self.height), 1),
+                pymunk.Segment(
+                    self.space.static_body,
+                    (self.width-1, self.height), (self.width-1, 1), 1),
+#                pymunk.Segment(
+#                     self.space.static_body,
+#                     (1, 1), (self.width, 1), 1)
+                pymunk.Segment(
+                    self.space.static_body,
+                    (self.width/2, self.height/2), (self.width/2, 1), 2)
+            ]
+            for s in self.static:
+                s.friction = 1.
+                s.group = 1  # Make our sensors.
+                s.collision_type = 1
+                s.color = THECOLORS["red"]
+            
+            self.space.add(self.static)
 
-        if self.draw_screen:
+        if self.visualize:
             # Create the Pygame robot for display
             self.create_robot(self.width/2, self.height/2, 0, self.scale_factor * self.robot.radius)
         
@@ -288,7 +317,7 @@ class CrowdSim(gym.Env):
         else:
             raise ValueError("Rule doesn't exist")
 
-        if self.draw_screen:
+        if self.visualize:
             if len(self.pedestrians) > 0:
                 for i in range(human_num):
                     self.space.remove(self.pedestrians[i][0], self.pedestrians[i][1])                    
@@ -462,18 +491,6 @@ class CrowdSim(gym.Env):
                 py = human.py - self.robot.py
                 vx = human.vx - self.robot.vx
                 vy = human.vy - self.robot.vy
-                try:
-                    time_to_collision = -1.0 * (px**2 + py**2) / (vx * px + vy * py)
-                except:
-                    time_to_collision = -1.0
-                
-                if time_to_collision < 0:
-                    time_to_collision = -1.0
-                else:
-                    time_to_collision = 1.0 - np.tanh(time_to_collision / 10.0)
-            
-                #print(time_to_collision)
-            
             else:
                 px = human.px - self.robot.px
                 py = human.py - self.robot.py
@@ -499,6 +516,18 @@ class CrowdSim(gym.Env):
                 vx = vx_rotated
                 vy = vy_rotated
                 
+            if (vx * px + vy * py) == 0:
+                time_to_collision = -1.0
+            else:
+                time_to_collision = -1.0 * (px**2 + py**2) / (vx * px + vy * py)
+            
+            if time_to_collision < 0:
+                time_to_collision = -1.0
+            else:
+                time_to_collision = 1.0 - np.tanh(time_to_collision / 10.0)
+        
+            #print(time_to_collision)
+                
             #print(self.robot.theta, np.sqrt(vx**2 + vy**2), px, py, gx, gy, vx, vy)
             
             #state.append(px_future / self.sensor_range)
@@ -516,7 +545,7 @@ class CrowdSim(gym.Env):
             state.append(vx / self.robot.max_linear_velocity)
             state.append(vy / self.robot.max_linear_velocity)
             state.append(time_to_collision)
-#             if self.draw_screen:
+#             if self.visualize:
 #                 rel_vel = Vec2d(vx_rel, vy_rel)                
 #                 rel_pos = self.robot_body.position + 2 * self.scale_factor * rel_vel
 #     
@@ -620,15 +649,15 @@ class CrowdSim(gym.Env):
         else:
             return state
 
-    def onestep_lookahead(self, action, debug=True, draw_screen=None, display_fps=None):
-        return self.step(action, update=False, debug=debug, draw_screen=None, display_fps=None)
+    def onestep_lookahead(self, action, debug=True, visualize=None, display_fps=None):
+        return self.step(action, update=False, debug=debug, visualize=None, display_fps=None)
 
-    def step(self, action, update=True, debug=False, draw_screen=None, display_fps=None):
+    def step(self, action, update=True, debug=False, visualize=None, display_fps=None):
         """
         Compute actions for all agents, detect collision, update environment and return (ob, reward, done, info)
 
         """
-        self.draw_screen = draw_screen if draw_screen is not None else self.draw_screen
+        self.visualize = visualize if visualize is not None else self.visualize
         self.display_fps = display_fps if display_fps is not None else self.display_fps
 
         # Convert the action variables to robot actions
@@ -699,7 +728,7 @@ class CrowdSim(gym.Env):
         reward, done, info = self._get_reward(scaled_action)
 
         # Update Pygame screen
-        if self.draw_screen:
+        if self.visualize:
             pygame_gx = int(self.scale_factor * self.robot.gx + self.width / 2.0)
             pygame_gy = int(self.scale_factor * self.robot.gy + self.height / 2.0)                
             pygame.draw.circle(self.surface, (0, 255, 0, 200), (pygame_gx, self.screen_y(pygame_gy)), 30)                           
@@ -882,8 +911,12 @@ class CrowdSim(gym.Env):
             done = True
             info = Timeout()
         elif collision:
-            self.n_collisions += 1
-            reward = self.collision_penalty
+            # Only count collisions if the robot is moving faster than a lower threshold
+            if np.linalg.norm([self.robot.vx, self.robot.vy]) > 0.05:
+                self.n_collisions += 1
+                reward = self.collision_penalty
+            else:
+                self.n_ped_hits_robot += 1
             done = True
             info = Collision()
         elif reaching_goal:
@@ -946,11 +979,13 @@ class CrowdSim(gym.Env):
             info_dict = {'episodes': self.n_episodes,
                          'successes': self.n_successes,
                          'collisions': self.n_collisions,
+                         'ped_hits_robot': self.n_ped_hits_robot,
                          'timeouts': self.n_timeouts,
                          'personal_space_violations': self.n_personal_space_violations,
                          'cutting_off': self.n_cutting_off,
                          'success_rate': 0 if self.n_episodes == 0 else 100 * self.n_successes / self.n_episodes,
-                         'collision_rate': 0 if self.n_episodes == 0 else 100 * self.n_collisions / self.n_episodes
+                         'collision_rate': 0 if self.n_episodes == 0 else 100 * self.n_collisions / self.n_episodes,
+                         'ped_hits_robot_rate': 0 if self.n_episodes == 0 else 100 * self.n_ped_hits_robot / self.n_episodes
                          }
                          
             info = info_dict
