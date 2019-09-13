@@ -146,6 +146,8 @@ class CrowdSim(gym.Env):
         self.discomfort_penalty_factor = config.getfloat('reward', 'discomfort_penalty_factor')
         self.slack_reward = config.getfloat('reward', 'slack_reward')
         self.energy_cost = config.getfloat('reward', 'energy_cost')
+        self.position_noise = config.getfloat('humans', 'position_noise')
+        self.velocity_noise = config.getfloat('humans', 'velocity_noise')        
                 
         self.lookahead_interval = config.getfloat('reward', 'lookahead_interval')        
         self.visualize = self.visualize or config.getboolean('env', 'visualize')
@@ -515,6 +517,12 @@ class CrowdSim(gym.Env):
                 
                 vx = vx_rotated
                 vy = vy_rotated
+
+            # Add some noise
+            px = (1.0 + random.uniform(-1, 1) * self.position_noise) * px
+            py = (1.0 + random.uniform(-1, 1) * self.position_noise) * py
+            vx = (1.0 + random.uniform(-1, 1) * self.velocity_noise) * vx
+            vy = (1.0 + random.uniform(-1, 1) * self.velocity_noise) * vy
                 
             if (vx * px + vy * py) == 0:
                 time_to_collision = -1.0
@@ -539,7 +547,7 @@ class CrowdSim(gym.Env):
             #state.append((py + vy * self.lookahead_interval) / self.sensor_range)
             #state.append(vx / self.robot.max_linear_velocity)
             #state.append(vy / self.robot.max_linear_velocity)
-                
+
             state.append(px / self.sensor_range)
             state.append(py / self.sensor_range)
             state.append(vx / self.robot.max_linear_velocity)

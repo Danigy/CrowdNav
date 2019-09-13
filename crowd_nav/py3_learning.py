@@ -181,15 +181,15 @@ class SimpleNavigation():
             model = SAC.load(args.weights)
             obs = env.reset()
             n_episodes = 0
-            n_test_episodes = 100
+            n_test_episodes = 10000
             while n_episodes < n_test_episodes:
                 action, _states = model.predict(obs)
                 obs, rewards, done, info = env.step(action)
                 if done:
                     n_episodes += 1
                     #del info['terminal_observation']
-                    if n_episodes == n_test_episodes:
-                        print([(key, trunc(info[0][key], 1)) for key in ['success_rate', 'collision_rate', 'timeouts', 'personal_space_violations']])
+                    if n_episodes % 2 == 0:
+                        print("episodes:", n_episodes, [(key, trunc(info[0][key], 1)) for key in ['success_rate', 'collision_rate', 'timeouts', 'personal_space_violations']])
                     obs = env.reset()
 
             env.close()
@@ -200,7 +200,7 @@ class SimpleNavigation():
         print(">>>>> End testing <<<<<", self.string_to_filename(json.dumps(params)))
         print("Final weights saved at: ", tb_log_dir + "/stable_baselines.pkl")
         
-        print("TEST COMMAND: python3 py3_learning.py --test --weights ", tb_log_dir + "/stable_baselines.pkl --visualize")
+        print("TEST COMMAND:\n\npython3 py3_learning.py --test --weights ", tb_log_dir + "/stable_baselines.pkl --visualize")
         
         env.close()
     
