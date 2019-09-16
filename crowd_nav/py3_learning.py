@@ -84,7 +84,10 @@ class SimpleNavigation():
             potential_reward_weight = None
             #collision_penalty = None
             params['collision_penalty'] = collision_penalty = -1.0
+            discomfort_dist = None            
             discomfort_penalty_factor = None
+            safety_penalty_factor = None
+            safe_obstacle_distance = None
             time_to_collision_penalty = None
             personal_space_penalty = None          
             slack_reward = None
@@ -93,7 +96,7 @@ class SimpleNavigation():
             gamma = 0.99
             decay = 0
             batch_norm = 'no'
-            params['learning_trials'] = learning_trials = 500000
+            params['learning_trials'] = learning_trials = 100000
             params['n_obstacles'] = 1
             params['n_sensors'] = 9
             learning_rate = 0.001
@@ -116,8 +119,7 @@ class SimpleNavigation():
         show_sensors = True if args.show_sensors else None
         
         env = gym.make('CrowdSim-v0', success_reward=success_reward, collision_penalty=collision_penalty, time_to_collision_penalty=time_to_collision_penalty,
-                       discomfort_dist=None, discomfort_penalty_factor=None, potential_reward_weight=potential_reward_weight, slack_reward=slack_reward,
-                       energy_cost=slack_reward, visualize=visualize, show_sensors=show_sensors, testing=args.test)
+                       discomfort_dist=discomfort_dist, discomfort_penalty_factor=discomfort_penalty_factor, potential_reward_weight=potential_reward_weight, slack_reward=slack_reward, energy_cost=energy_cost, safe_obstacle_distance=safe_obstacle_distance, safety_penalty_factor=safety_penalty_factor, visualize=visualize, show_sensors=show_sensors, testing=args.test)
         
         print("Gym environment created.")
         

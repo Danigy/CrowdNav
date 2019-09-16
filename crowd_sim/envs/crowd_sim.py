@@ -37,6 +37,8 @@ import time
 
 from collections import OrderedDict
 
+from copy import deepcopy
+
 atexit.register(pygame.quit)
 atexit.register(pygame.display.quit)
 
@@ -45,7 +47,8 @@ class CrowdSim(gym.Env):
 
     def __init__(self, success_reward=None, collision_penalty=None, time_to_collision_penalty=None, discomfort_dist=None,
                        discomfort_penalty_factor=None, potential_reward_weight=None, slack_reward=None,
-                       energy_cost=None, visualize=None, show_sensors=None, expert_policy=False, testing=False, create_walls=False):
+                       energy_cost=None, safe_obstacle_distance=None, safety_penalty_factor=None, visualize=None,
+                       show_sensors=None, expert_policy=False, testing=False, create_walls=False):
         """
         Movement simulation for n+1 agents
         Agent can either be human or robot.
@@ -68,6 +71,8 @@ class CrowdSim(gym.Env):
         self.discomfort_penalty_factor = discomfort_penalty_factor or None
         self.slack_reward = slack_reward or None
         self.energy_cost = energy_cost or None
+        self.safe_obstacle_distance = safe_obstacle_distance or None
+        self.safety_penalty_factor = safety_penalty_factor or None        
 
         self.lookahead_interval = 2.0
         # simulation configuration
@@ -96,6 +101,7 @@ class CrowdSim(gym.Env):
         self.n_personal_space_violations = 0
         self.n_cutting_off = 0
         self.crashed = False
+        self.sensor_readings = None
         
         # ===== Crowdsim to Pygame conversion ===== #
         self.scale_factor = 100
@@ -178,6 +184,8 @@ class CrowdSim(gym.Env):
         self.potential_reward_weight = config.getfloat('reward', 'potential_reward_weight')        
         self.discomfort_dist = config.getfloat('reward', 'discomfort_dist')
         self.discomfort_penalty_factor = config.getfloat('reward', 'discomfort_penalty_factor')
+        self.safety_penalty_factor = config.getfloat('reward', 'safety_penalty_factor')
+        self.safe_obstacle_distance = config.getfloat('reward', 'safe_obstacle_distance')                
         self.slack_reward = config.getfloat('reward', 'slack_reward')
         self.energy_cost = config.getfloat('reward', 'energy_cost')
         self.position_noise = config.getfloat('humans', 'position_noise')
@@ -514,6 +522,7 @@ class CrowdSim(gym.Env):
         state = []
         
         state = self.get_sonar_readings(x, y, self.robot_body.angle)
+        self.sensor_readings = deepcopy(state)
         
         if self.robot.kinematics == 'holonomic':
             gx = self.robot.gx - self.robot.px
@@ -996,7 +1005,6 @@ class CrowdSim(gym.Env):
             # adjust the reward based on FPS
             self.n_personal_space_violations += 1
             reward = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
-            #discomfort = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
             done = False
             info = Danger(velocity_dmin)
         else:
@@ -1009,8 +1017,15 @@ class CrowdSim(gym.Env):
             
             # energy cost
             reward += self.energy_cost * np.linalg.norm(np.array([self.robot.vx, self.robot.vy])) * self.time_step
-            #print(-0.01 * np.linalg.norm(np.array([self.robot.vx, self.robot.vy])))
+
+            # safety factor
+            sensor_readings = np.array(self.sensor_readings)
+            min_obstacle_distance = min(sensor_readings)
+            min_obstacle_distance *= self.max_pygame_sensor_range / self.scale_factor
             
+            if min_obstacle_distance < self.safe_obstacle_distance:
+                reward += (min_obstacle_distance - self.safe_obstacle_distance) * self.safety_penalty_factor * self.time_step            
+
             # Get initial goal potential and collision potential
             if self.n_steps == 1:
                 self.initial_potential = self.get_potential()
@@ -1171,8 +1186,6 @@ class CrowdSim(gym.Env):
         #np_readings += noise
 
         readings = list(np_readings)
-        
-        #print(readings)
                 
         return readings
 

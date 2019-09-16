@@ -65,6 +65,7 @@ def main():
     
     env = gym.make('CrowdSim-v0', success_reward=None, collision_penalty=None, time_to_collision_penalty=None, discomfort_dist=None,
                        discomfort_penalty_factor=None, potential_reward_weight=None, slack_reward=None, energy_cost=None, visualize=args.visualize)
+
     print("Gym environment created.")
     
     env.seed(123)
