@@ -108,7 +108,7 @@ def main():
             while not done:
                 action = robot.act(ob)
                 state, ob, _, done, info = env.step(action, update=True, debug=True, display_fps=1000)
-                #time.sleep(0.02)
+                time.sleep(0.02)
 
             n_episodes += 1
             if n_episodes % 10 == 0:

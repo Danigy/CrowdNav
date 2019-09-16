@@ -101,7 +101,7 @@ class CrowdSim(gym.Env):
         self.scale_factor = 100
         self.angle_offset = np.pi / 2.0
 
-        self.n_sensors = 9
+        self.n_sensors = 8
         self.sensor_range = 10 # meters
         self.n_sensor_samples = 40
         self.sensor_gap = 30 # pixels
@@ -155,6 +155,7 @@ class CrowdSim(gym.Env):
             vertices[i][1] = vertices[i][1] * self.scale_factor + self.height/2
 
         pymunk_obstacle = pymunk.Poly(self.space.static_body, vertices)
+
         pymunk_obstacle.group = 1
         
         return pymunk_obstacle
@@ -831,7 +832,6 @@ class CrowdSim(gym.Env):
             pygame_ex = int(self.scale_factor * ex + self.width/2)
             pygame_ey = int(self.scale_factor * ey + self.height/2)
 
-
             if self.visualize:
                 pygame.draw.circle(self.surface, (255, 255, 255, 40), (pygame_px, self.screen_y(pygame_py)), int(self.scale_factor * human.personal_space))
 
@@ -847,6 +847,9 @@ class CrowdSim(gym.Env):
         self.space.step(self.time_step)
             
         if self.visualize:
+            #for obstacle in self.obstacles:
+            #    pygame.draw.polygon(self.surface, (255, 0, 0, 200), obstacle)
+            
             self.space.debug_draw(self.draw_options)
             self.screen.blit(self.surface, (0, 0))
             pygame.display.flip()
@@ -1150,16 +1153,14 @@ class CrowdSim(gym.Env):
 
     def get_sonar_readings(self, x, y, angle):
         readings = []
-
+                
         if self.n_sensors > 1:
-            delta_theta = 2 * np.pi / (self.n_sensors - 1)
+            delta_theta = 2 * np.pi / self.n_sensors
         else:
             delta_theta = 0
         
-        for i in range(self.n_sensors):   
-            j = (self.n_sensors - 1) / 2 - i
-                        
-            readings.append(self.detect_sensor_ping(x, y, angle + j * delta_theta))
+        for i in range(self.n_sensors):                        
+            readings.append(self.detect_sensor_ping(x, y, angle + i * delta_theta, i))
             
         np_readings = np.array(readings, dtype=np.float32)
 
@@ -1169,15 +1170,21 @@ class CrowdSim(gym.Env):
         #np_readings += noise
 
         readings = list(np_readings)
+        
+        #print(readings)
                 
         return readings
 
-    def detect_sensor_ping(self, x, y, angle):
+    def detect_sensor_ping(self, x, y, angle, index):        
         x1 = x + self.max_pygame_sensor_range * np.cos(angle)
         y1 = y + self.max_pygame_sensor_range * np.sin(angle)
         
         if self.visualize and self.show_sensors:
-            pygame.draw.lines(self.surface, (255, 0, 0), False, [Vec2d(x,self.screen_y(y)), Vec2d(x1, self.screen_y(y1))], 1)
+            if index == 0:
+                pygame.draw.lines(self.surface, (255, 0, 0), False, [Vec2d(x,self.screen_y(y)), Vec2d(x1, self.screen_y(y1))], 1)
+            else:
+                pygame.draw.lines(self.surface, (255, 255, 0), False, [Vec2d(x,self.screen_y(y)), Vec2d(x1, self.screen_y(y1))], 1)
+
         
         robot_filter = pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS ^ 2)
         seqment_query_info = self.space.segment_query_first(Vec2d(x,y), Vec2d(x1, y1), 0, shape_filter=robot_filter)
