@@ -68,7 +68,7 @@ class SimpleNavigation():
             slack_reward = params['slack']
             energy_cost = params['energy']
 
-            learning_rate = 0.0005
+            learning_rate = 0.001
             
             #personal_space_cost = 0.0
             #slack_reward = -0.01
@@ -92,9 +92,10 @@ class SimpleNavigation():
             gamma = 0.99
             decay = 0
             batch_norm = 'no'
-            params['learning_trials'] = learning_trials = 1500000
-            params['kinematics'] = 'unicycle'
-            learning_rate = 0.0001
+            params['learning_trials'] = learning_trials = 500000
+            params['n_obstacles'] = 1
+            params['n_sensors'] = 17
+            learning_rate = 0.001
 
         # configure policy
         policy = policy_factory[args.policy]()
@@ -168,7 +169,7 @@ class SimpleNavigation():
                 obs, rewards, done, info = env.step(action)
                 if done:
                     n_episodes += 1
-                    if n_episodes == n_test_episodes:
+                    if n_episodes % 10 == 0:
                     #del info['terminal_observation']
                         print([(key, trunc(info[0][key], 1)) for key in ['success_rate', 'collision_rate', 'timeouts', 'personal_space_violations']])
                     obs = env.reset()

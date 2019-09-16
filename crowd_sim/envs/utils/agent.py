@@ -30,7 +30,7 @@ class Agent(object):
         self.vx = None
         self.vy = None
         self.vr = None
-        self.theta = None
+        self.theta = 0.0
         self.time_step = None
 
     def print_info(self):

@@ -6,7 +6,6 @@ from gym import error, spaces, utils
 from gym.utils import seeding
 
 import logging
-logger = logging.getLogger(__name__)
 
 import numpy as np
 import rvo2
@@ -87,8 +86,7 @@ class CrowdSim(gym.Env):
         self.action_values = None
         self.attention_weights = None
         
-        self.n_sensors = 0
-        self.sensor_range = 25 # meters
+
         self.n_episodes = 0
         self.n_steps = 0
         self.n_successes = 0
@@ -97,11 +95,24 @@ class CrowdSim(gym.Env):
         self.n_timeouts = 0
         self.n_personal_space_violations = 0
         self.n_cutting_off = 0
+        self.crashed = False
+        
+        # ===== Crowdsim to Pygame conversion ===== #
+        self.scale_factor = 100
+        self.angle_offset = np.pi / 2.0
+
+        self.n_sensors = 13
+        self.sensor_range = 10 # meters
+        self.n_sensor_samples = 40
+        self.sensor_gap = 30 # pixels
+        self.sensor_spread = 10      # pixels
+        self.max_pygame_sensor_range = self.sensor_range * self.scale_factor
         
         self.visualize = visualize
         self.expert_policy = expert_policy
         self.testing = testing
         self.create_walls = create_walls
+        self.static = list()
                 
         ''' 'OpenAI Gym Requirements '''
         self._seed(123)
@@ -110,14 +121,17 @@ class CrowdSim(gym.Env):
         inertia = pymunk.moment_for_circle(1, 0, 14, (0, 0))
         self.robot_body = pymunk.Body(1, inertia)
         self.robot_body.position = x, y
+        self.robot_body.angle = r
         self.robot_shape = pymunk.Circle(self.robot_body, robot_radius)
         self.robot_shape.color = THECOLORS["white"]
+        self.robot_shape.group = 2
+        robot_filter = pymunk.ShapeFilter(categories=2)
+        self.robot_shape.filter = robot_filter
         self.robot_shape.elasticity = 1.0
         self.robot_shape.collision_type = 3
         collison_handler = self.space.add_wildcard_collision_handler(3)
         collison_handler.begin = self.collision_begin
         collison_handler.separate = self.collision_separate
-        self.robot_body.angle = 0
         driving_direction = Vec2d(1, 0).rotated(self.robot_body.angle)
         self.robot_body.apply_impulse_at_local_point(driving_direction)
         self.space.add(self.robot_body, self.robot_shape)
@@ -132,6 +146,25 @@ class CrowdSim(gym.Env):
         self.space.add(ped_body, ped_shape)
         return [ped_body, ped_shape]
     
+    def crowd_obstacle_to_pygame(self, obstacle):
+        #pygame_segments = tuple(pygame_segments * self.scale_factor + self.width
+        vertices = np.array(obstacle)
+        
+        for i in range(len(obstacle)):
+            vertices[i][0] = vertices[i][0] * self.scale_factor + self.width/2
+            vertices[i][1] = vertices[i][1] * self.scale_factor + self.height/2
+
+        pymunk_obstacle = pymunk.Poly(self.space.static_body, vertices)
+        pymunk_obstacle.group = 1
+        
+        return pymunk_obstacle
+
+#         for segment in pygame_segments:
+#             self.static.append(pymunk.Segment(
+#                     self.space.static_body,
+#                     (segment[0][0] * self.scale_factor + self.width/2, segment[0][1] * self.scale_factor + self.height/2),
+#                     (segment[1][0] * self.scale_factor + self.width/2, segment[1][1] * self.scale_factor + self.height/2), 5))
+
     def configure(self, config):
         self.config = config
         self.time_limit = config.getint('env', 'time_limit')
@@ -175,11 +208,7 @@ class CrowdSim(gym.Env):
             logging.info("Not randomize human's radius and preferred speed")
         logging.info('Training simulation: {}, test simulation: {}'.format(self.train_val_sim, self.test_sim))
         logging.info('Square width: {}, circle width: {}'.format(self.square_width, self.circle_radius))
-        
-       # ===== Begin Pymunk setup ===== #
-        self.scale_factor = 100
-        self.angle_offset = np.pi / 2.0
-        
+
         self.width = int(1.2 * self.square_width * self.scale_factor)
         self.height = int(0.9 * self.square_width * self.scale_factor)
         
@@ -188,15 +217,17 @@ class CrowdSim(gym.Env):
         
         if not self.visualize:
             os.environ["SDL_VIDEODRIVER"] = "dummy"
-        
-        else:
-            self.screen = pygame.display.set_mode((self.width, self.height))
-            self.screen_rect = self.screen.get_rect()
+
+        self.screen = pygame.display.set_mode((self.width, self.height))
+        #self.screen_rect = self.screen.get_rect()
+
+        self.screen.set_alpha(None)
+        self.draw_options = DrawOptions(self.screen)
+        self.draw_options.flags = 3
+        if self.visualize:
             self.surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-            self.surface2 = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-            self.rect_surface2 = self.surface2.get_rect(center=(0,0))
-            self.draw_options = DrawOptions(self.screen)
-            self.draw_options.flags = 3
+        #self.surface2 = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        #self.rect_surface2 = self.surface2.get_rect(center=(0,0))
 
         self.clock = pygame.time.Clock()
         
@@ -207,37 +238,51 @@ class CrowdSim(gym.Env):
         # List to hold the pedestrians
         self.pedestrians = []
         
+        self.obstacles = []
+        
         # Create walls.
+        self.create_walls = True
+        
         if self.create_walls:
             self.static = [
                 pymunk.Segment(
                     self.space.static_body,
-                    (0, 1), (0, self.height), 1),
+                    (0, 1), (0, self.height), 3),
                 pymunk.Segment(
                     self.space.static_body,
-                    (1, self.height), (self.width, self.height), 1),
+                    (1, self.height), (self.width, self.height), 3),
                 pymunk.Segment(
                     self.space.static_body,
-                    (self.width-1, self.height), (self.width-1, 1), 1),
-#                pymunk.Segment(
-#                     self.space.static_body,
-#                     (1, 1), (self.width, 1), 1)
+                    (self.width-1, self.height), (self.width-1, 1), 3),
                 pymunk.Segment(
                     self.space.static_body,
-                    (self.width/2, self.height/2), (self.width/2, 1), 2)
+                    (1, 1), (self.width, 1), 3)
+                #             pymunk.Segment(
+                #                 self.space.static_body,
+                #                 (self.width/2, self.height/2), (self.width/2, 1), 2)
             ]
-            for s in self.static:
-                s.friction = 1.
-                s.group = 1  # Make our sensors.
-                s.collision_type = 1
-                s.color = THECOLORS["red"]
-            
-            self.space.add(self.static)
 
-        if self.visualize:
-            # Create the Pygame robot for display
-            self.create_robot(self.width/2, self.height/2, 0, self.scale_factor * self.robot.radius)
         
+        # Create obstacles
+        self.create_obstacles = True
+        
+        if self.create_obstacles:            
+            o1 = [(-1, -1), (-1, 1), (1, 1), (1, -1)]
+            
+            pymunk_obstacle = self.crowd_obstacle_to_pygame(o1)
+            self.static.append(pymunk_obstacle)
+
+        for s in self.static:
+            s.friction = 1.
+            s.group = 1
+            obstacle_filter = pymunk.ShapeFilter(categories=1)
+            s.filter = obstacle_filter
+            s.collision_type = 1
+            s.color = THECOLORS["red"]
+            self.obstacles.append(s)
+             
+        self.space.add(self.static)
+
         self.action_space = spaces.Box(-1.0, 1.0, shape=[2,])
         self.observation_space = spaces.Box(-1.0, 1.0, shape=[self.n_sensors + 2 + 5 * self.human_num,])
         
@@ -319,15 +364,14 @@ class CrowdSim(gym.Env):
         else:
             raise ValueError("Rule doesn't exist")
 
-        if self.visualize:
-            if len(self.pedestrians) > 0:
-                for i in range(human_num):
-                    self.space.remove(self.pedestrians[i][0], self.pedestrians[i][1])                    
-                        
-            self.pedestrians = []
-        
+        if len(self.pedestrians) > 0:
             for i in range(human_num):
-                self.pedestrians.append(self.create_pedestrian(self.scale_factor * self.humans[i].px + self.width/2, self.scale_factor * self.humans[i].py + self.height/2, self.scale_factor * self.humans[i].radius))
+                self.space.remove(self.pedestrians[i][0], self.pedestrians[i][1])                    
+                    
+        self.pedestrians = []
+    
+        for i in range(human_num):
+            self.pedestrians.append(self.create_pedestrian(self.scale_factor * self.humans[i].px + self.width/2, self.scale_factor * self.humans[i].py + self.height/2, self.scale_factor * self.humans[i].radius))
 
     def generate_circle_crossing_human(self):
         human = Human(self.config, 'humans')
@@ -420,51 +464,56 @@ class CrowdSim(gym.Env):
         human.set(px, py, 0, gx, gy, 0, 0, 0, 0)
         return human
 
-    def get_human_times(self):
-        """
-        Run the whole simulation to the end and compute the average time for human to reach goal.
-        Once an agent reaches the goal, it stops moving and becomes an obstacle
-        (doesn't need to take half responsibility to avoid collision).
-
-        :return:
-        """
-        # centralized orca simulator for all humans
-        if not self.robot.reached_destination():
-            raise ValueError('Episode is not done yet')
-        params = (10, 10, 5, 5)
-        sim = rvo2.PyRVOSimulator(self.time_step, *params, 0.3, 1)
-        sim.addAgent(self.robot.get_position(), *params, self.robot.radius, self.robot.v_pref,
-                     self.robot.get_velocity())
-        for human in self.humans:
-            sim.addAgent(human.get_position(), *params, human.radius, human.v_pref, human.get_velocity())
-
-        max_time = 1000
-        while not all(self.human_times):
-            for i, agent in enumerate([self.robot] + self.humans):
-                vel_pref = np.array(agent.get_goal_position()) - np.array(agent.get_position())
-                if norm(vel_pref) > 1:
-                    vel_pref /= norm(vel_pref)
-                sim.setAgentPrefVelocity(i, tuple(vel_pref))
-            sim.doStep()
-            self.global_time += self.time_step
-            if self.global_time > max_time:
-                logging.warning('Simulation cannot terminate!')
-            for i, human in enumerate(self.humans):
-                if self.human_times[i] == 0 and human.reached_destination():
-                    self.human_times[i] = self.global_time
-
-            # for visualization
-            self.robot.set_position(sim.getAgentPosition(0))
-            for i, human in enumerate(self.humans):
-                human.set_position(sim.getAgentPosition(i + 1))
-            self.states.append([self.robot.get_full_state(), [human.get_full_state() for human in self.humans]])
-
-        del sim
-        return self.human_times
+#     def get_human_times(self):
+#         """
+#         Run the whole simulation to the end and compute the average time for human to reach goal.
+#         Once an agent reaches the goal, it stops moving and becomes an obstacle
+#         (doesn't need to take half responsibility to avoid collision).
+# 
+#         :return:
+#         """
+#         # centralized orca simulator for all humans
+#         if not self.robot.reached_destination():
+#             raise ValueError('Episode is not done yet')
+#         params = (10, 10, 5, 5)
+#         sim = rvo2.PyRVOSimulator(self.time_step, *params, 0.3, 1)
+#         sim.addAgent(self.robot.get_position(), *params, self.robot.radius, self.robot.v_pref,
+#                      self.robot.get_velocity())
+#         for human in self.humans:
+#             sim.addAgent(human.get_position(), *params, human.radius, human.v_pref, human.get_velocity())
+# 
+#         max_time = 1000
+#         while not all(self.human_times):
+#             for i, agent in enumerate([self.robot] + self.humans):
+#                 vel_pref = np.array(agent.get_goal_position()) - np.array(agent.get_position())
+#                 if norm(vel_pref) > 1:
+#                     vel_pref /= norm(vel_pref)
+#                 sim.setAgentPrefVelocity(i, tuple(vel_pref))
+#             sim.doStep()
+#             self.global_time += self.time_step
+#             if self.global_time > max_time:
+#                 logging.warning('Simulation cannot terminate!')
+#             for i, human in enumerate(self.humans):
+#                 if self.human_times[i] == 0 and human.reached_destination():
+#                     self.human_times[i] = self.global_time
+# 
+#             # for visualization
+#             self.robot.set_position(sim.getAgentPosition(0))
+#             for i, human in enumerate(self.humans):
+#                 human.set_position(sim.getAgentPosition(i + 1))
+#             self.states.append([self.robot.get_full_state(), [human.get_full_state() for human in self.humans]])
+# 
+#         del sim
+#         return self.human_times
     
     def _get_state(self):
+        # Get the current location of the robot and the sensor readings there
+        x, y = self.robot_body.position
+        
         state = []
-
+        
+        state = self.get_sonar_readings(x, y, self.robot_body.angle)
+        
         if self.robot.kinematics == 'holonomic':
             gx = self.robot.gx - self.robot.px
             gy = self.robot.gy - self.robot.py
@@ -534,7 +583,6 @@ class CrowdSim(gym.Env):
             else:
                 time_to_collision = 1.0 - np.tanh(time_to_collision / 10.0)
         
-            #print(time_to_collision)
                 
             #print(self.robot.theta, np.sqrt(vx**2 + vy**2), px, py, gx, gy, vx, vy)
             
@@ -558,6 +606,11 @@ class CrowdSim(gym.Env):
 #                 rel_pos = self.robot_body.position + 2 * self.scale_factor * rel_vel
 #     
 #                 pygame.draw.lines(self.surface, (0, 255, 0), False, [Vec2d(self.robot_body.position[0], self.screen_y(self.robot_body.position[1])), Vec2d(rel_pos[0], self.screen_y(rel_pos[1]))], 3)
+
+        #print(state)
+        
+        self.screen.fill(THECOLORS["black"])
+        #self.screen.flip()
 
         return np.array(state)
         
@@ -611,7 +664,7 @@ class CrowdSim(gym.Env):
             gx = np.random.random() * self.square_width * 0.2 * sign
             gy = self.square_width * 0.35
             
-            self.robot.set(px, py, np.pi/2, gx, gy, 0, 0, 0, 0)
+            self.robot.set(px, py, 0, gx, gy, 0, 0, 0, 0)
 
             if self.case_counter[phase] >= 0:
                 np.random.seed(counter_offset[phase] + self.case_counter[phase])
@@ -633,7 +686,14 @@ class CrowdSim(gym.Env):
                     self.humans[2].set(5, -5, 5, 5, 0, 0, np.pi / 2)
                 else:
                     raise NotImplementedError
-
+        
+        try:
+            self.robot_body.position
+        except:
+            pygame_px = int(self.scale_factor * self.robot.px + self.width/2)
+            pygame_py = int(self.scale_factor * self.robot.py + self.height/2)
+            self.create_robot(pygame_px, pygame_py, np.pi/2, self.scale_factor * self.robot.radius)
+            
         for agent in [self.robot] + self.humans:
             agent.time_step = self.time_step
             agent.policy.time_step = self.time_step
@@ -735,50 +795,51 @@ class CrowdSim(gym.Env):
         # Compute the reward
         reward, done, info = self._get_reward(scaled_action)
 
-        # Update Pygame screen
+        # Update Pygame objects                 
+        pygame_robot_px = int(self.scale_factor * self.robot.px + self.width/2)
+        pygame_robot_py = int(self.scale_factor * self.robot.py + self.height/2)
+            
+        self.robot_body.position = Vec2d(pygame_robot_px, pygame_robot_py)
+        self.robot_body.angle = self.robot.theta + self.angle_offset
+        
         if self.visualize:
             pygame_gx = int(self.scale_factor * self.robot.gx + self.width / 2.0)
             pygame_gy = int(self.scale_factor * self.robot.gy + self.height / 2.0)                
-            pygame.draw.circle(self.surface, (0, 255, 0, 200), (pygame_gx, self.screen_y(pygame_gy)), 30)                           
-            pygame_px = int(self.scale_factor * self.robot.px + self.width/2)
-            pygame_py = int(self.scale_factor * self.robot.py + self.height/2)
-            
-            self.robot_body.position = Vec2d(pygame_px, pygame_py)
-            self.robot_body.angle = self.robot.theta
-            
-            pygame.draw.circle(self.surface, (255, 255, 255, 40), (pygame_px, self.screen_y(pygame_py)), int(self.scale_factor * self.robot.personal_space))
-            
-            index = 0
-            
-            for human in self.humans:
-                human_state = human.get_full_state()
-                
-                pygame_px = int(self.scale_factor * human_state.px + self.width/2)
-                pygame_py = int(self.scale_factor * human_state.py + self.height/2)
-                
-                self.pedestrians[index][0].position = Vec2d(pygame_px, pygame_py)
+            pygame.draw.circle(self.surface, (0, 255, 0, 200), (pygame_gx, self.screen_y(pygame_gy)), 30)
 
-                pygame.draw.circle(self.surface, (255, 255, 255, 40), (pygame_px, self.screen_y(pygame_py)), int(self.scale_factor * human.personal_space))
-
-                # Show the elongation of the personal space in the direction of motion
-                px = human_state.px - self.robot.px
-                py = human_state.py - self.robot.py
-
-                #if self.robot.kinematics == 'holonomic':
-                vx = human_state.vx
-                vy = human_state.vy
-                #else:
-                #    raise NotImplementedError
+        #pygame.draw.circle(self.surface, (255, 255, 255, 40), (pygame_px, self.screen_y(pygame_py)), int(self.scale_factor * self.robot.personal_space))
+        
+        index = 0
+        
+        for human in self.humans:
+            human_state = human.get_full_state()
             
-                ex = human_state.px + vx * self.lookahead_interval
-                ey = human_state.py + vy * self.lookahead_interval
+            pygame_px = int(self.scale_factor * human_state.px + self.width/2)
+            pygame_py = int(self.scale_factor * human_state.py + self.height/2)
+            
+            self.pedestrians[index][0].position = Vec2d(pygame_px, pygame_py)
 
-                pygame_ex = int(self.scale_factor * ex + self.width/2)
-                pygame_ey = int(self.scale_factor * ey + self.height/2)
-                
-                pygame.draw.lines(self.surface, (0, 255, 0), False, [Vec2d(pygame_px, self.screen_y(pygame_py)),
-                                  Vec2d(pygame_ex, self.screen_y(pygame_ey))], 3)                
-                
+            #pygame.draw.circle(self.surface, (255, 255, 255, 40), (pygame_px, self.screen_y(pygame_py)), int(self.scale_factor * human.personal_space))
+
+            # Show the elongation of the personal space in the direction of motion
+            px = human_state.px - self.robot.px
+            py = human_state.py - self.robot.py
+
+            #if self.robot.kinematics == 'holonomic':
+            vx = human_state.vx
+            vy = human_state.vy
+            #else:
+            #    raise NotImplementedError
+        
+            ex = human_state.px + vx * self.lookahead_interval
+            ey = human_state.py + vy * self.lookahead_interval
+
+            pygame_ex = int(self.scale_factor * ex + self.width/2)
+            pygame_ey = int(self.scale_factor * ey + self.height/2)
+            
+            #pygame.draw.lines(self.surface, (0, 255, 0), False, [Vec2d(pygame_px, self.screen_y(pygame_py)),
+            #                  Vec2d(pygame_ex, self.screen_y(pygame_ey))], 3)                
+            
 #                 ellipse_left = pygame_px - int(self.scale_factor * human.personal_space/2)
 #                 ellipse_top = self.screen_y(pygame_py + int(self.scale_factor * human.personal_space/2))
 #                 
@@ -790,23 +851,23 @@ class CrowdSim(gym.Env):
 #                 rotated_rect = rotated_surface.get_rect()
 #                 rotated_rect.clamp_ip(self.screen_rect)
 #                 self.screen.blit(rotated_surface, self.rect_surface2.center)
-                
-                pygame_gx = int(self.scale_factor * human_state.gx + self.width/2)
-                pygame_gy = int(self.scale_factor * human_state.gy + self.height/2)
-                pygame.draw.circle(self.surface, (255, 0, 0, 200), (pygame_gx, self.screen_y(pygame_gy)), 10)                
-
-                index += 1
-                
-            # Update Pymunk
-            self.space.step(self.time_step)
             
-            self.space.debug_draw(self.draw_options)
-            self.screen.blit(self.surface, (0, 0))
-            pygame.display.flip()
-            self.clock.tick(self.display_fps)
-            self.screen.fill(THECOLORS["black"])
-            self.surface.fill(THECOLORS["black"])
-            #self.surface2.fill(THECOLORS["black"])
+            pygame_gx = int(self.scale_factor * human_state.gx + self.width/2)
+            pygame_gy = int(self.scale_factor * human_state.gy + self.height/2)
+            #pygame.draw.circle(self.surface, (255, 0, 0, 200), (pygame_gx, self.screen_y(pygame_gy)), 10)                
+
+            index += 1
+            
+        # Update Pymunk
+        self.space.step(self.time_step)
+            
+        #if self.visualize:
+        self.space.debug_draw(self.draw_options)
+        #self.screen.blit(self.surface, (0, 0))
+        pygame.display.flip()
+        self.clock.tick(self.display_fps)
+        #self.surface.fill(THECOLORS["black"])
+        #self.surface2.fill(THECOLORS["black"])
 
         if debug or self.expert_policy:
             return state, ob, reward, done, info
@@ -918,7 +979,7 @@ class CrowdSim(gym.Env):
             reward = 0
             done = True
             info = Timeout()
-        elif collision:
+        elif collision or self.crashed:
             # Only count collisions if the robot is moving faster than a lower threshold
             if np.linalg.norm([self.robot.vx, self.robot.vy]) > 0.05:
                 self.n_collisions += 1
@@ -978,9 +1039,7 @@ class CrowdSim(gym.Env):
             info = Nothing()
         else:
             self.n_episodes += 1
-            
-        #time.sleep(0.25)
-            
+                        
         #print("Collision?", collision, " Success?", reaching_goal, " Discomfort: ", discomfort, " Potential", potent, " Reward", reward)
 
         if not debug:
@@ -1102,6 +1161,140 @@ class CrowdSim(gym.Env):
     
     def get_potential(self):
         return np.linalg.norm(np.array([self.robot.px, self.robot.py]) - np.array([self.robot.gx, self.robot.gy])) 
+
+    def get_sonar_readings(self, x, y, angle):
+        readings = []
+
+        if self.n_sensors > 1:
+            delta_theta = 2 * np.pi / (self.n_sensors - 1)
+        else:
+            delta_theta = 0
+        
+        for i in range(self.n_sensors):   
+            j = (self.n_sensors - 1) / 2 - i
+                        
+            readings.append(self.detect_sensor_ping(x, y, angle + j * delta_theta))
+            
+        np_readings = np.array(readings, dtype=np.float32)
+
+        np_readings /= self.max_pygame_sensor_range
+        
+        
+        #noise = np.random.normal(0, 0.1, len(readings))
+        #np_readings += noise
+
+        readings = list(np_readings)
+                
+        return readings
+
+    def get_sonar_readings1(self, x, y, angle):
+        readings = []
+        """
+        Instead of using a grid of boolean(ish) sensors, sonar readings
+        simply return N "distance" readings, one for each sonar
+        we're simulating. The distance is a count of the first non-zero
+        reading starting at the object. For instance, if the fifth sensor
+        in a sonar "arm" is non-zero, then that arm returns a distance of 5.
+        """
+        sensors = []
+        
+        for i in range(self.n_sensors):
+            sensors.append(self.make_sonar_arm(x, y))
+        
+        if self.n_sensors > 1:
+            delta_theta = 2 * np.pi / (self.n_sensors - 1)
+        else:
+            delta_theta = 0
+        
+        for i in range(self.n_sensors):   
+            j = (self.n_sensors - 1) / 2 - i
+                        
+            readings.append(self.get_arm_distance(sensors[i], x, y, angle, j * delta_theta))
+
+        np_readings = np.array(readings, dtype=np.float32)
+
+        #print((np_readings * self.sensor_spread + self.sensor_gap))
+        np_readings = (np_readings * self.sensor_spread + self.sensor_gap) / self.max_pygame_sensor_range
+        
+        #noise = np.random.normal(0, 0.1, len(readings))
+        #np_readings += noise
+
+        readings = list(np_readings)
+
+        return readings
+
+    def get_arm_distance(self, arm, x, y, angle, offset):
+        # Used to count the distance.
+        i = 0
+  
+        # Look at each point and see if we've hit something.
+        for point in arm:
+            i += 1
+  
+            # Move the point to the right spot.
+            rotated_p = self.get_rotated_point(
+                x, y, point[0], point[1], angle + offset
+            )
+              
+            # Check if we've hit something. Return the current i (distance)
+            # if we did.
+            if rotated_p[0] <= 0 or rotated_p[1] <= 0 \
+                    or rotated_p[0] >= self.width or rotated_p[1] >= self.height:
+                return i  # Sensor is off the screen.
+            else:
+                #print(angle, rotated_p)
+                obs = self.screen.get_at(rotated_p)
+                if self.get_track_or_not(obs) != 0:
+                    return i
+  
+            if self.show_sensors:
+                pygame.draw.circle(self.screen, (255, 255, 255), (rotated_p), 2)
+                pygame.display.flip()
+  
+        # Return the distance for the arm.
+        return i
+
+    def make_sonar_arm(self, x, y):
+        spread = 10  # Default spread.
+        distance = self.sensor_gap  # Gap before first sensor.
+        arm_points = []
+        # Make an arm. We build it flat because we'll rotate it about the
+        # center later.
+        for i in range(1, self.n_sensor_samples):
+            arm_points.append((distance + x + (self.sensor_spread * i), y))
+
+        return arm_points
+
+    def get_rotated_point(self, x_1, y_1, x_2, y_2, radians):
+        # Rotate x_2, y_2 around x_1, y_1 by angle.
+        x_change = (x_2 - x_1) * math.cos(radians) + \
+            (y_2 - y_1) * math.sin(radians)
+        y_change = (y_1 - y_2) * math.cos(radians) - \
+            (x_1 - x_2) * math.sin(radians)
+        new_x = x_change + x_1
+        new_y = self.height - (y_change + y_1)
+        
+        return int(new_x), int(new_y)
+
+    def get_track_or_not(self, reading):
+        if reading == THECOLORS['black'] or reading == THECOLORS['green'] or reading == (44, 62, 80, 255):
+            return 0
+        else:
+            return 1
+        
+    def detect_sensor_ping(self, x, y, angle):
+        x1 = x + self.max_pygame_sensor_range * np.cos(angle)
+        y1 = y + self.max_pygame_sensor_range * np.sin(angle)
+        
+        robot_filter = pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS ^ 2)
+        seqment_query_info = self.space.segment_query_first(Vec2d(x,y), Vec2d(x1, y1), 0, shape_filter=robot_filter)
+
+        if seqment_query_info is not None:
+            distance = np.linalg.norm((seqment_query_info.point.x - x, seqment_query_info.point.y - y))
+        else:
+            distance = self.max_pygame_sensor_range
+        
+        return distance
 
     def render(self, mode='human', output_file=None):
         from matplotlib import animation

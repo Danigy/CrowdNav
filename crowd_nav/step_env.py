@@ -108,10 +108,11 @@ def main():
             while not done:
                 action = robot.act(ob)
                 state, ob, _, done, info = env.step(action, update=True, debug=True, display_fps=1000)
-                time.sleep(0.001)
+                #time.sleep(0.02)
 
             n_episodes += 1
-            print(info)
+            if n_episodes % 10 == 0:
+                print(info)
             obs = env.reset()
                 #current_pos = np.array(robot.get_position())
                 #logging.debug('Speed: %.2f', np.linalg.norm(current_pos - last_pos) / robot.time_step)
