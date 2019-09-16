@@ -847,8 +847,9 @@ class CrowdSim(gym.Env):
         self.space.step(self.time_step)
             
         if self.visualize:
-            #for obstacle in self.obstacles:
-            #    pygame.draw.polygon(self.surface, (255, 0, 0, 200), obstacle)
+            for obstacle in self.obstacles:
+                if type(obstacle) == pymunk.shapes.Poly:
+                    pygame.draw.polygon(self.surface, (255, 0, 0, 200), obstacle.get_vertices())
             
             self.space.debug_draw(self.draw_options)
             self.screen.blit(self.surface, (0, 0))
