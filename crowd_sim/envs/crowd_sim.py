@@ -45,7 +45,7 @@ class CrowdSim(gym.Env):
 
     def __init__(self, success_reward=None, collision_penalty=None, time_to_collision_penalty=None, discomfort_dist=None,
                        discomfort_penalty_factor=None, potential_reward_weight=None, slack_reward=None,
-                       energy_cost=None, visualize=None, expert_policy=False, testing=False, create_walls=False):
+                       energy_cost=None, visualize=None, show_sensors=None, expert_policy=False, testing=False, create_walls=False):
         """
         Movement simulation for n+1 agents
         Agent can either be human or robot.
@@ -101,7 +101,7 @@ class CrowdSim(gym.Env):
         self.scale_factor = 100
         self.angle_offset = np.pi / 2.0
 
-        self.n_sensors = 13
+        self.n_sensors = 9
         self.sensor_range = 10 # meters
         self.n_sensor_samples = 40
         self.sensor_gap = 30 # pixels
@@ -226,7 +226,7 @@ class CrowdSim(gym.Env):
         self.draw_options.flags = 3
         if self.visualize:
             self.surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        #self.surface2 = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            self.surface2 = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
         #self.rect_surface2 = self.surface2.get_rect(center=(0,0))
 
         self.clock = pygame.time.Clock()
@@ -601,16 +601,12 @@ class CrowdSim(gym.Env):
             state.append(vx / self.robot.max_linear_velocity)
             state.append(vy / self.robot.max_linear_velocity)
             state.append(time_to_collision)
+            
 #             if self.visualize:
 #                 rel_vel = Vec2d(vx_rel, vy_rel)                
 #                 rel_pos = self.robot_body.position + 2 * self.scale_factor * rel_vel
-#     
+#      
 #                 pygame.draw.lines(self.surface, (0, 255, 0), False, [Vec2d(self.robot_body.position[0], self.screen_y(self.robot_body.position[1])), Vec2d(rel_pos[0], self.screen_y(rel_pos[1]))], 3)
-
-        #print(state)
-        
-        self.screen.fill(THECOLORS["black"])
-        #self.screen.flip()
 
         return np.array(state)
         
@@ -807,7 +803,7 @@ class CrowdSim(gym.Env):
             pygame_gy = int(self.scale_factor * self.robot.gy + self.height / 2.0)                
             pygame.draw.circle(self.surface, (0, 255, 0, 200), (pygame_gx, self.screen_y(pygame_gy)), 30)
 
-        #pygame.draw.circle(self.surface, (255, 255, 255, 40), (pygame_px, self.screen_y(pygame_py)), int(self.scale_factor * self.robot.personal_space))
+            pygame.draw.circle(self.surface, (255, 255, 255, 40), (pygame_robot_px, self.screen_y(pygame_robot_py)), int(self.scale_factor * self.robot.personal_space))
         
         index = 0
         
@@ -818,8 +814,6 @@ class CrowdSim(gym.Env):
             pygame_py = int(self.scale_factor * human_state.py + self.height/2)
             
             self.pedestrians[index][0].position = Vec2d(pygame_px, pygame_py)
-
-            #pygame.draw.circle(self.surface, (255, 255, 255, 40), (pygame_px, self.screen_y(pygame_py)), int(self.scale_factor * human.personal_space))
 
             # Show the elongation of the personal space in the direction of motion
             px = human_state.px - self.robot.px
@@ -836,38 +830,30 @@ class CrowdSim(gym.Env):
 
             pygame_ex = int(self.scale_factor * ex + self.width/2)
             pygame_ey = int(self.scale_factor * ey + self.height/2)
-            
-            #pygame.draw.lines(self.surface, (0, 255, 0), False, [Vec2d(pygame_px, self.screen_y(pygame_py)),
-            #                  Vec2d(pygame_ex, self.screen_y(pygame_ey))], 3)                
-            
-#                 ellipse_left = pygame_px - int(self.scale_factor * human.personal_space/2)
-#                 ellipse_top = self.screen_y(pygame_py + int(self.scale_factor * human.personal_space/2))
-#                 
-#                 ellipse_rect = pygame.Rect(ellipse_left, ellipse_top, int(1.2 * self.scale_factor * human.personal_space), int(self.scale_factor * human.personal_space))
-# 
-#                 pygame.draw.ellipse(self.surface2, (255, 255, 255, 40), ellipse_rect)
-#                 
-#                 rotated_surface = pygame.transform.rotate(self.surface2, 45)
-#                 rotated_rect = rotated_surface.get_rect()
-#                 rotated_rect.clamp_ip(self.screen_rect)
-#                 self.screen.blit(rotated_surface, self.rect_surface2.center)
-            
-            pygame_gx = int(self.scale_factor * human_state.gx + self.width/2)
-            pygame_gy = int(self.scale_factor * human_state.gy + self.height/2)
-            #pygame.draw.circle(self.surface, (255, 0, 0, 200), (pygame_gx, self.screen_y(pygame_gy)), 10)                
+
+
+            if self.visualize:
+                pygame.draw.circle(self.surface, (255, 255, 255, 40), (pygame_px, self.screen_y(pygame_py)), int(self.scale_factor * human.personal_space))
+
+                pygame.draw.lines(self.surface, (0, 255, 0), False, [Vec2d(pygame_px, self.screen_y(pygame_py)), Vec2d(pygame_ex, self.screen_y(pygame_ey))], 3)                
+
+                pygame_gx = int(self.scale_factor * human_state.gx + self.width/2)
+                pygame_gy = int(self.scale_factor * human_state.gy + self.height/2)
+                pygame.draw.circle(self.surface, (255, 0, 0, 200), (pygame_gx, self.screen_y(pygame_gy)), 10)                
 
             index += 1
             
         # Update Pymunk
         self.space.step(self.time_step)
             
-        #if self.visualize:
-        self.space.debug_draw(self.draw_options)
-        #self.screen.blit(self.surface, (0, 0))
-        pygame.display.flip()
+        if self.visualize:
+            self.space.debug_draw(self.draw_options)
+            self.screen.blit(self.surface, (0, 0))
+            pygame.display.flip()
+            self.screen.fill(THECOLORS["black"])
+            self.surface.fill(THECOLORS["black"])
+            
         self.clock.tick(self.display_fps)
-        #self.surface.fill(THECOLORS["black"])
-        #self.surface2.fill(THECOLORS["black"])
 
         if debug or self.expert_policy:
             return state, ob, reward, done, info
@@ -1179,7 +1165,6 @@ class CrowdSim(gym.Env):
 
         np_readings /= self.max_pygame_sensor_range
         
-        
         #noise = np.random.normal(0, 0.1, len(readings))
         #np_readings += noise
 
@@ -1187,104 +1172,12 @@ class CrowdSim(gym.Env):
                 
         return readings
 
-    def get_sonar_readings1(self, x, y, angle):
-        readings = []
-        """
-        Instead of using a grid of boolean(ish) sensors, sonar readings
-        simply return N "distance" readings, one for each sonar
-        we're simulating. The distance is a count of the first non-zero
-        reading starting at the object. For instance, if the fifth sensor
-        in a sonar "arm" is non-zero, then that arm returns a distance of 5.
-        """
-        sensors = []
-        
-        for i in range(self.n_sensors):
-            sensors.append(self.make_sonar_arm(x, y))
-        
-        if self.n_sensors > 1:
-            delta_theta = 2 * np.pi / (self.n_sensors - 1)
-        else:
-            delta_theta = 0
-        
-        for i in range(self.n_sensors):   
-            j = (self.n_sensors - 1) / 2 - i
-                        
-            readings.append(self.get_arm_distance(sensors[i], x, y, angle, j * delta_theta))
-
-        np_readings = np.array(readings, dtype=np.float32)
-
-        #print((np_readings * self.sensor_spread + self.sensor_gap))
-        np_readings = (np_readings * self.sensor_spread + self.sensor_gap) / self.max_pygame_sensor_range
-        
-        #noise = np.random.normal(0, 0.1, len(readings))
-        #np_readings += noise
-
-        readings = list(np_readings)
-
-        return readings
-
-    def get_arm_distance(self, arm, x, y, angle, offset):
-        # Used to count the distance.
-        i = 0
-  
-        # Look at each point and see if we've hit something.
-        for point in arm:
-            i += 1
-  
-            # Move the point to the right spot.
-            rotated_p = self.get_rotated_point(
-                x, y, point[0], point[1], angle + offset
-            )
-              
-            # Check if we've hit something. Return the current i (distance)
-            # if we did.
-            if rotated_p[0] <= 0 or rotated_p[1] <= 0 \
-                    or rotated_p[0] >= self.width or rotated_p[1] >= self.height:
-                return i  # Sensor is off the screen.
-            else:
-                #print(angle, rotated_p)
-                obs = self.screen.get_at(rotated_p)
-                if self.get_track_or_not(obs) != 0:
-                    return i
-  
-            if self.show_sensors:
-                pygame.draw.circle(self.screen, (255, 255, 255), (rotated_p), 2)
-                pygame.display.flip()
-  
-        # Return the distance for the arm.
-        return i
-
-    def make_sonar_arm(self, x, y):
-        spread = 10  # Default spread.
-        distance = self.sensor_gap  # Gap before first sensor.
-        arm_points = []
-        # Make an arm. We build it flat because we'll rotate it about the
-        # center later.
-        for i in range(1, self.n_sensor_samples):
-            arm_points.append((distance + x + (self.sensor_spread * i), y))
-
-        return arm_points
-
-    def get_rotated_point(self, x_1, y_1, x_2, y_2, radians):
-        # Rotate x_2, y_2 around x_1, y_1 by angle.
-        x_change = (x_2 - x_1) * math.cos(radians) + \
-            (y_2 - y_1) * math.sin(radians)
-        y_change = (y_1 - y_2) * math.cos(radians) - \
-            (x_1 - x_2) * math.sin(radians)
-        new_x = x_change + x_1
-        new_y = self.height - (y_change + y_1)
-        
-        return int(new_x), int(new_y)
-
-    def get_track_or_not(self, reading):
-        if reading == THECOLORS['black'] or reading == THECOLORS['green'] or reading == (44, 62, 80, 255):
-            return 0
-        else:
-            return 1
-        
     def detect_sensor_ping(self, x, y, angle):
         x1 = x + self.max_pygame_sensor_range * np.cos(angle)
         y1 = y + self.max_pygame_sensor_range * np.sin(angle)
+        
+        if self.visualize and self.show_sensors:
+            pygame.draw.lines(self.surface, (255, 0, 0), False, [Vec2d(x,self.screen_y(y)), Vec2d(x1, self.screen_y(y1))], 1)
         
         robot_filter = pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS ^ 2)
         seqment_query_info = self.space.segment_query_first(Vec2d(x,y), Vec2d(x1, y1), 0, shape_filter=robot_filter)

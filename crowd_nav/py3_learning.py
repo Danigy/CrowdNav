@@ -35,6 +35,7 @@ class SimpleNavigation():
         parser.add_argument('-t', '--test', default=False, action='store_true')
         parser.add_argument('-w', '--weights', type=pathstr, required=False, help='Path to weights file')
         parser.add_argument('-d', '--visualize', default=False, action='store_true')
+        parser.add_argument('-s', '--show_sensors', default=False, action='store_true')
         parser.add_argument('--env_config', type=str, default='configs/env.config')
         parser.add_argument('--policy', type=str, default='multi_human_rl')
         parser.add_argument('--policy_config', type=str, default='configs/policy.config')
@@ -94,7 +95,7 @@ class SimpleNavigation():
             batch_norm = 'no'
             params['learning_trials'] = learning_trials = 500000
             params['n_obstacles'] = 1
-            params['n_sensors'] = 17
+            params['n_sensors'] = 9
             learning_rate = 0.001
 
         # configure policy
@@ -112,10 +113,11 @@ class SimpleNavigation():
         env_config.read(args.env_config)
         
         visualize = True if args.visualize else None
+        show_sensors = True if args.show_sensors else None
         
         env = gym.make('CrowdSim-v0', success_reward=success_reward, collision_penalty=collision_penalty, time_to_collision_penalty=time_to_collision_penalty,
                        discomfort_dist=None, discomfort_penalty_factor=None, potential_reward_weight=potential_reward_weight, slack_reward=slack_reward,
-                       energy_cost=slack_reward, visualize=visualize, testing=args.test)
+                       energy_cost=slack_reward, visualize=visualize, show_sensors=show_sensors, testing=args.test)
         
         print("Gym environment created.")
         
