@@ -26,7 +26,7 @@ from crowd_nav.policy.policy_factory import policy_factory
 
 ENV_NAME = 'CrowdSim-v0'
                 
-TUNING = False
+TUNING = True
 NN_TUNING = False
 
 class SimpleNavigation():
@@ -61,13 +61,17 @@ class SimpleNavigation():
             slack_reward = None
             learning_rate = 0.001
         elif TUNING:
-            success_reward = 1.0
-            collision_penalty = -0.25
-            potential_reward_weight = 1.0
-            time_to_collision_penalty = 0.0
-            discomfort_penalty_factor = 0.5
-            slack_reward = params['slack']
-            energy_cost = params['energy']
+            success_reward = None
+            potential_reward_weight = None
+            collision_penalty = None
+            discomfort_dist = None            
+            discomfort_penalty_factor = params['discomfort']
+            safety_penalty_factor = params['safety']
+            safe_obstacle_distance = None
+            time_to_collision_penalty = None
+            personal_space_penalty = None          
+            slack_reward = None
+            energy_cost = None
 
             learning_rate = 0.001
             
@@ -75,15 +79,14 @@ class SimpleNavigation():
             #slack_reward = -0.01
             #learning_rate = 0.001
             if not NN_TUNING:
-                nn_layers= [512, 256, 128]
+                nn_layers = [256, 128, 64]
                 gamma = 0.99
                 decay = 0
         else:
             params = dict()
             success_reward = None
             potential_reward_weight = None
-            #collision_penalty = None
-            params['collision_penalty'] = collision_penalty = -1.0
+            collision_penalty = None
             discomfort_dist = None            
             discomfort_penalty_factor = None
             safety_penalty_factor = None
@@ -309,14 +312,14 @@ if __name__ == '__main__':
     elif TUNING:
         param_list = []
         
-        slack_rewards = [-0.0005, -0.001, -0.005, -0.01]
-        energy_costs = [-0.0005, -0.001, -0.005, -0.01]
+        discomfort_penalty_factors = [0.05, 0.1, 0.2, 0.5]
+        safety_penalty_factors = [0.01, 0.05, 0.1, 0.5]
 
-        for slack_reward in slack_rewards:
-            for energy_cost in energy_costs:
+        for discomfort_penalty_factor in discomfort_penalty_factors:
+            for safety_penalty_factor in safety_penalty_factors:
                 params = {
-                          "slack": slack_reward,
-                          "energy": energy_cost
+                          "discomfort": discomfort_penalty_factor,
+                          "safety": energy_cost
                           }
                 param_list.append(params)
 
