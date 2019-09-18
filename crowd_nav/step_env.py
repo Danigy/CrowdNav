@@ -20,6 +20,7 @@ def main():
     parser.add_argument('--il', default=False, action='store_true')
     parser.add_argument('--gpu', default=False, action='store_true')
     parser.add_argument('--visualize', default=True, action='store_true')
+    parser.add_argument('--show_sensors', default=True, action='store_true')
     parser.add_argument('--phase', type=str, default='test')
     parser.add_argument('--test_case', type=int, default=None)
     parser.add_argument('--square', default=False, action='store_true')
@@ -64,7 +65,8 @@ def main():
     env_config.read(args.env_config)
     
     env = gym.make('CrowdSim-v0', success_reward=None, collision_penalty=None, time_to_collision_penalty=None, discomfort_dist=None,
-                       discomfort_penalty_factor=None, potential_reward_weight=None, slack_reward=None, energy_cost=None, visualize=args.visualize)
+                       discomfort_penalty_factor=None, potential_reward_weight=None, slack_reward=None, energy_cost=None,
+                       visualize=args.visualize, show_sensors=args.show_sensors, create_walls=False, create_obstacles=True)
 
     print("Gym environment created.")
     
@@ -109,10 +111,10 @@ def main():
             while not done:
                 action = robot.act(ob)
                 state, ob, _, done, info = env.step(action, update=True, debug=True, display_fps=1000)
-                time.sleep(0.02)
+                #time.sleep(0.02)
 
             n_episodes += 1
-            if n_episodes % 10 == 0:
+            if n_episodes % 1 == 0:
                 print(info)
             obs = env.reset()
                 #current_pos = np.array(robot.get_position())
