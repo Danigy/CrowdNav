@@ -102,6 +102,7 @@ class CrowdSim(gym.Env):
         self.n_personal_space_violations = 0
         self.n_cutting_off = 0
         self.crashed = False
+        self.ped_collision = False
         self.sensor_readings = None
         
         # ===== Crowdsim to Pygame conversion ===== #
@@ -137,10 +138,13 @@ class CrowdSim(gym.Env):
         robot_filter = pymunk.ShapeFilter(categories=2)
         self.robot_shape.filter = robot_filter
         self.robot_shape.elasticity = 1.0
-        self.robot_shape.collision_type = 3
-        collison_handler = self.space.add_wildcard_collision_handler(3)
-        collison_handler.begin = self.collision_begin
-        collison_handler.separate = self.collision_separate
+        self.robot_shape.collision_type = 1
+        collison_pedestrian = self.space.add_collision_handler(1, 2)
+        collison_object = self.space.add_collision_handler(1, 3)
+        collison_pedestrian.begin = self.collision_pedestrian_begin
+        collison_pedestrian.separate = self.collision_pedestrian_separate
+        collison_object.begin = self.collision_object_begin
+        collison_object.separate = self.collision_object_separate
         driving_direction = Vec2d(1, 0).rotated(self.robot_body.angle)
         self.robot_body.apply_impulse_at_local_point(driving_direction)
         self.space.add(self.robot_body, self.robot_shape)
@@ -149,6 +153,7 @@ class CrowdSim(gym.Env):
         ped_body = pymunk.Body(1000, 1000)
         ped_shape = pymunk.Circle(ped_body, r)
         ped_shape.elasticity = 1.0
+        ped_shape.collision_type = 2
         ped_body.position = x, y
         ped_body.velocity = Vec2d(0, 0)
         ped_shape.color = THECOLORS["orange"]
@@ -286,7 +291,7 @@ class CrowdSim(gym.Env):
             s.group = 1
             obstacle_filter = pymunk.ShapeFilter(categories=1)
             s.filter = obstacle_filter
-            s.collision_type = 1
+            s.collision_type = 3
             s.color = THECOLORS["red"]
             self.obstacles.append(s)
              
@@ -1031,13 +1036,8 @@ class CrowdSim(gym.Env):
 
             # closest distance between boundaries of two agents
             closest_dist = np.linalg.norm([px, py]) - human.radius - self.robot.radius
-            
-            if closest_dist < 0:
-                collision = True
-                # logging.debug("Collision: distance between robot and p{} is {:.2E}".format(i, closest_dist))
-                break
-            
-            elif closest_dist < dmin:
+
+            if closest_dist < dmin:
                 dmin = closest_dist
 
         # collision detection between humans
@@ -1078,8 +1078,6 @@ class CrowdSim(gym.Env):
         done = False
         
         reward = 0
-        discomfort = 0
-        potent = 0
         
         info_dict = OrderedDict()
                 
@@ -1088,13 +1086,17 @@ class CrowdSim(gym.Env):
             reward = 0
             done = True
             info = Timeout()
-        elif collision or self.crashed:
-            # Only count collisions if the robot is moving faster than a lower threshold
-            if np.linalg.norm([self.robot.vx, self.robot.vy]) > 0.05:
+        elif self.crashed or self.ped_collision:
+            # For pedestrians, only blame the robot if it is moving faster than a lower threshold
+            if self.ped_collision:
+                if np.linalg.norm([self.robot.vx, self.robot.vy]) < 0.05:
+                    self.n_ped_hits_robot += 1
+                else:
+                    self.n_ped_collisions += 1
+                    reward = self.collision_penalty
+            else:
                 self.n_collisions += 1
                 reward = self.collision_penalty
-            else:
-                self.n_ped_hits_robot += 1
             done = True
             info = Collision()
         elif reaching_goal:
@@ -1605,20 +1607,20 @@ class CrowdSim(gym.Env):
 
         return (math.copysign(a * tx, p[0]), math.copysign(b * ty, p[1]))
 
-    def collision_begin(self, space, arbiter, data):
-        shapes = arbiter._get_shapes()
-        ped_collision = True
-        for shape in shapes:
-            if type(shape) == pymunk.shapes.Poly:
-                ped_collision = False
-                break
-        if ped_collision:
-            self.n_ped_collisions += 1
+    def collision_object_begin(self, space, arbiter, data):
         self.crashed = True
         return True
     
-    def collision_separate(self, space, arbiter, data):
+    def collision_object_separate(self, space, arbiter, data):
         self.crashed = False
+        return False
+    
+    def collision_pedestrian_begin(self, space, arbiter, data):
+        self.ped_collision = True
+        return True
+    
+    def collision_pedestrian_separate(self, space, arbiter, data):
+        self.ped_collision = False
         return False
     
     def screen_y(self, y):
