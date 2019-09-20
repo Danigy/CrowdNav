@@ -212,10 +212,11 @@ class SimpleNavigation():
         model.save(tb_log_dir + "/stable_baselines")
         print(">>>>> End testing <<<<<", self.string_to_filename(json.dumps(params)))
         print("Final weights saved at: ", tb_log_dir + "/stable_baselines.pkl")
-        
+
         print("\nTEST COMMAND:\n\npython3 py3_learning.py --test --weights ", tb_log_dir + "/stable_baselines.pkl --visualize")
         
         print("\nTESTING for 100 episodes with params:", params, "\n")
+
         obs = env.reset()
         n_episodes = 0
         n_test_episodes = 100
@@ -227,7 +228,6 @@ class SimpleNavigation():
                 if n_episodes % 100 == 0:
                     print("episodes:", n_episodes, [(key, trunc(info[0][key], 1)) for key in ['success_rate', 'ped_collision_rate', 'collision_rate', 'timeout_rate', 'personal_space_violations']])
                     obs = env.reset()
-        
         env.close()
     
     def create_base_lidar_model(self, input_size, output_size, nn_layers):
