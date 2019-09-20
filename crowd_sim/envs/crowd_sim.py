@@ -90,7 +90,6 @@ class CrowdSim(gym.Env):
         self.states = None
         self.action_values = None
         self.attention_weights = None
-        
 
         self.n_episodes = 0
         self.n_steps = 0
@@ -104,6 +103,8 @@ class CrowdSim(gym.Env):
         self.crashed = False
         self.ped_collision = False
         self.sensor_readings = None
+        self.sqrt_2 = np.sqrt(2.0)
+        self.max_ttc = -1.0
         
         # ===== Crowdsim to Pygame conversion ===== #
         self.scale_factor = 100
@@ -227,8 +228,8 @@ class CrowdSim(gym.Env):
         logging.info('Training simulation: {}, test simulation: {}'.format(self.train_val_sim, self.test_sim))
         logging.info('Square width: {}, circle width: {}'.format(self.square_width, self.circle_radius))
 
-        self.width = int(1.2 * self.square_width * self.scale_factor)
-        self.height = int(0.9 * self.square_width * self.scale_factor)
+        self.width = int(1.0 * self.square_width * self.scale_factor)
+        self.height = int(1.0 * self.square_width * self.scale_factor)
         
         #self.width = 1000
         #self.height = 1000
@@ -281,7 +282,7 @@ class CrowdSim(gym.Env):
         
         # Create obstacles
         if self.create_obstacles:            
-            o1 = [(-1, -1), (-1, 1), (1, 1), (1, -1)]
+            o1 = [(-0.5, -0.5), (-0.5, 0.5), (0.5, 0.5), (0.5, -0.5)]
             
             pymunk_obstacle = self.crowd_obstacle_to_pygame(o1)
             self.static.append(pymunk_obstacle)
@@ -298,6 +299,7 @@ class CrowdSim(gym.Env):
         self.space.add(self.static)
 
         self.action_space = spaces.Box(-1.0, 1.0, shape=[2,])
+        #self.observation_space = spaces.Box(-1.0, 1.0, shape=[2 + 3 + 5 * self.human_num,])
         self.observation_space = spaces.Box(-1.0, 1.0, shape=[self.n_sonar_sensors + 2 + 5 * self.human_num,])
         
     def set_robot(self, robot):
@@ -523,13 +525,12 @@ class CrowdSim(gym.Env):
     def _get_state(self):
         # Get the current location of the robot and the sensor readings there
         x, y = self.robot_body.position
-        
+                
         state = []
         
         if self.n_sonar_sensors > 0:
             state = list(self.get_sonar_readings(x, y, self.robot_body.angle))
             self.sensor_readings = deepcopy(state)
-            #print(state)
         
         if self.robot.kinematics == 'holonomic':
             gx = self.robot.gx - self.robot.px
@@ -547,8 +548,8 @@ class CrowdSim(gym.Env):
             gx = gx_rotated
             gy = gy_rotated
 
-        state.append(gx / self.sensor_range)
-        state.append(gy / self.sensor_range)
+        state.append(gx / self.square_width / self.sqrt_2)
+        state.append(gy / self.square_width / self.sqrt_2)
         
         for i, human in enumerate(self.humans):
             px_future = (human.px + human.vx * self.lookahead_interval) - self.robot.px
@@ -599,43 +600,67 @@ class CrowdSim(gym.Env):
                 time_to_collision = -1.0
             else:
                 time_to_collision = 1.0 - np.tanh(time_to_collision / 10.0)
+#                 if time_to_collision > self.max_ttc:
+#                     self.max_ttc = time_to_collision
+#                     print(self.max_ttc)
                 
             #print(self.robot.theta, np.sqrt(vx**2 + vy**2), px, py, gx, gy, vx, vy)
             
-            #state.append(px_future / self.sensor_range)
-            #state.append(py_future / self.sensor_range)
+            #state.append(px_future / self.square_width)
+            #state.append(py_future / self.square_width)
             #state.append(time_to_collision)
-            #state.append(px / self.sensor_range)
-            #state.append(py / self.sensor_range)
-            #state.append((px + vx * self.lookahead_interval) / self.sensor_range)
-            #state.append((py + vy * self.lookahead_interval) / self.sensor_range)
-            #state.append(vx / self.robot.max_linear_velocity)
-            #state.append(vy / self.robot.max_linear_velocity)
+            #state.append(px / self.square_width)
+            #state.append(py / self.square_width)
+            #state.append((px + vx * self.lookahead_interval) / self.square_width)
+            #state.append((py + vy * self.lookahead_interval) / self.square_width)
+            #state.append(vx / self.robot.max_linear_velocity / self.sqrt_2)
+            #state.append(vy / self.robot.max_linear_velocity / self.sqrt_2)
 
-            state.append(px / self.sensor_range)
-            state.append(py / self.sensor_range)
-            state.append(vx / self.robot.max_linear_velocity)
-            state.append(vy / self.robot.max_linear_velocity)
+            state.append(px / self.square_width / self.sqrt_2)
+            state.append(py / self.square_width / self.sqrt_2)
+            state.append(vx / self.robot.max_linear_velocity / self.sqrt_2)
+            state.append(vy / self.robot.max_linear_velocity / self.sqrt_2)
             state.append(time_to_collision)
             
-#             if self.visualize:
-#                 rel_vel = Vec2d(vx_rel, vy_rel)                
-#                 rel_pos = self.robot_body.position + 2 * self.scale_factor * rel_vel
-#      
-#                 pygame.draw.lines(self.surface, (0, 255, 0), False, [Vec2d(self.robot_body.position[0], self.screen_y(self.robot_body.position[1])), Vec2d(rel_pos[0], self.screen_y(rel_pos[1]))], 3)
-
+        for i in range(len(state)):
+            #if abs(state[i]) > 1:
+            #    print(state[i])
+            state[i] = max(-1.0, min(1.0, state[i]))
+                
+        assert all([abs(x) <= 1.0 for x in state])
+            
+        #print(state)
+        
         return np.array(state)
-    
-    def _get_state1(self):
+
+    def _get_state2(self):
         # Get the current location of the robot and the sensor readings there
         x, y = self.robot_body.position
-        
+                
         state = []
         
         if self.n_sonar_sensors > 0:
-            state = list(self.get_sonar_readings(x, y, self.robot_body.angle))
-            self.sensor_readings = deepcopy(state)
-            #print(state)
+            #state = list(self.get_sonar_readings(x, y, self.robot_body.angle))
+            closest_point = self.get_sonar_readings2(x, y, self.robot_body.angle) / self.scale_factor
+            px = closest_point[0]
+            py = closest_point[1]
+                                    
+            if (self.robot.vx * px + self.robot.vy * py) == 0:
+                time_to_collision = -1.0
+            else:
+                time_to_collision = -1.0 * (px**2 + py**2) / (self.robot.vx * px + self.robot.vy * py)
+            
+            if time_to_collision < 0:
+                time_to_collision = -1.0
+            else:
+                time_to_collision = 1.0 - np.tanh(time_to_collision / 10.0)
+            
+            #state = list(self.get_sonar_readings(x, y, self.robot_body.angle))
+            #self.sensor_readings = deepcopy(state)
+            state.append(px / self.square_width / self.sqrt_2)
+            state.append(py / self.square_width / self.sqrt_2)
+            state.append(time_to_collision)
+            self.closest_point = closest_point
         
         if self.robot.kinematics == 'holonomic':
             gx = self.robot.gx - self.robot.px
@@ -653,8 +678,9 @@ class CrowdSim(gym.Env):
             gx = gx_rotated
             gy = gy_rotated
 
-        state.append(gx / self.sensor_range)
-        state.append(gy / self.sensor_range)
+        #print(gx, gy)
+        state.append(gx / self.square_width / self.sqrt_2)
+        state.append(gy / self.square_width / self.sqrt_2)
         
         for i, human in enumerate(self.humans):
             px_future = (human.px + human.vx * self.lookahead_interval) - self.robot.px
@@ -708,29 +734,34 @@ class CrowdSim(gym.Env):
                 
             #print(self.robot.theta, np.sqrt(vx**2 + vy**2), px, py, gx, gy, vx, vy)
             
-            #state.append(px_future / self.sensor_range)
-            #state.append(py_future / self.sensor_range)
+            #state.append(px_future / self.square_width)
+            #state.append(py_future / self.square_width)
             #state.append(time_to_collision)
-            #state.append(px / self.sensor_range)
-            #state.append(py / self.sensor_range)
-            #state.append((px + vx * self.lookahead_interval) / self.sensor_range)
-            #state.append((py + vy * self.lookahead_interval) / self.sensor_range)
-            #state.append(vx / self.robot.max_linear_velocity)
-            #state.append(vy / self.robot.max_linear_velocity)
+            #state.append(px / self.square_width)
+            #state.append(py / self.square_width)
+            #state.append((px + vx * self.lookahead_interval) / self.square_width)
+            #state.append((py + vy * self.lookahead_interval) / self.square_width)
+            #state.append(vx / self.robot.max_linear_velocity / self.sqrt_2)
+            #state.append(vy / self.robot.max_linear_velocity / self.sqrt_2)
 
-            state.append(px / self.sensor_range)
-            state.append(py / self.sensor_range)
-            state.append(vx / self.robot.max_linear_velocity)
-            state.append(vy / self.robot.max_linear_velocity)
+            state.append(px / self.square_width / self.sqrt_2)
+            state.append(py / self.square_width / self.sqrt_2)
+            state.append(vx / self.robot.max_linear_velocity / self.sqrt_2)
+            state.append(vy / self.robot.max_linear_velocity / self.sqrt_2)
             state.append(time_to_collision)
+            
+            for i in range(len(state)):
+                state[i] = max(-1.0, min(1.0, state[i]))
+                
+            assert all([abs(x) <= 1.0 for x in state])
             
 #             if self.visualize:
 #                 rel_vel = Vec2d(vx_rel, vy_rel)                
 #                 rel_pos = self.robot_body.position + 2 * self.scale_factor * rel_vel
 #      
 #                 pygame.draw.lines(self.surface, (0, 255, 0), False, [Vec2d(self.robot_body.position[0], self.screen_y(self.robot_body.position[1])), Vec2d(rel_pos[0], self.screen_y(rel_pos[1]))], 3)
-
         return np.array(state)
+    
         
     def _seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -982,7 +1013,6 @@ class CrowdSim(gym.Env):
             self.surface.fill(THECOLORS["black"])
             
             self.clock.tick(self.display_fps)
-            
         if debug or self.expert_policy:
             return state, ob, reward, done, info
         else:
@@ -1029,7 +1059,8 @@ class CrowdSim(gym.Env):
         # collision detection
         dmin = float('inf')
         collision = False
-        
+    
+        # minimum distance detection between robot and humans
         for i, human in enumerate(self.humans):
             px = human.px - self.robot.px
             py = human.py - self.robot.py
@@ -1040,17 +1071,6 @@ class CrowdSim(gym.Env):
             if closest_dist < dmin:
                 dmin = closest_dist
 
-        # collision detection between humans
-        human_num = len(self.humans)
-        for i in range(human_num):
-            for j in range(i + 1, human_num):
-                dx = self.humans[i].px - self.humans[j].px
-                dy = self.humans[i].py - self.humans[j].py
-                dist = (dx ** 2 + dy ** 2) ** (1 / 2) - self.humans[i].radius - self.humans[j].radius
-                if dist < 0:
-                    # detect collision but don't take humans' collision into account
-                    logging.debug('Collision happens between humans in step()')
-                    
         # velocity projection to elongate the personal space in the direction of motion
         velocity_dmin = float('inf')
         cutting_off = False
@@ -1109,7 +1129,6 @@ class CrowdSim(gym.Env):
             # adjust the reward based on FPS
             self.n_personal_space_violations += 1
             reward = (dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
-            #discomfort = (dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
             done = False
             info = Danger(dmin)
         elif velocity_dmin < self.discomfort_dist:
@@ -1132,12 +1151,13 @@ class CrowdSim(gym.Env):
 
             # safety factor
             if self.n_sonar_sensors > 0:
+                #min_obstacle_distance = np.linalg.norm(self.closest_point)
                 sensor_readings = np.array(self.sensor_readings)
                 try:
                     min_obstacle_distance = min(sensor_readings[np.where(sensor_readings >= 0)])
                     min_obstacle_distance *= self.max_pygame_sensor_range / self.scale_factor
                 except:
-                    min_obstacle_distance = np.inf
+                    min_obstacle_distance = np.Inf
                 
                 if min_obstacle_distance < self.safe_obstacle_distance:
                     obstacle_cost = (min_obstacle_distance - self.safe_obstacle_distance) * self.safety_penalty_factor * self.time_step
@@ -1304,41 +1324,47 @@ class CrowdSim(gym.Env):
         for i in range(self.n_sonar_sensors):
             j = int(self.n_sonar_sensors / 2) - i
             sensor_angle = angle + j * delta_theta
-            readings.append(self.detect_sensor_ping(x, y, sensor_angle, i))
-            
-        np_readings = np.array(readings, dtype=np.float32)
-
-        np_readings /= self.max_pygame_sensor_range
-                        
-        return np_readings
-
-    def detect_sensor_ping2(self, x, y, angle, index):        
-        x1 = x + self.max_pygame_sensor_range * np.cos(angle)
-        y1 = y + self.max_pygame_sensor_range * np.sin(angle)
+            readings.append(self.detect_sensor_ping2(x, y, sensor_angle, i))
+                                
+        min_distance = np.Inf
+        closest_point = None
         
+        for reading in readings:
+            distance = np.linalg.norm(reading)
+            if distance < min_distance:
+                min_distance = distance
+                closest_point = reading
+                                        
+        return closest_point
+
+    def detect_sensor_ping2(self, x, y, angle, index):
+        x1 = x + self.max_pygame_sensor_range * np.sqrt(2) * np.cos(angle)
+        y1 = y + self.max_pygame_sensor_range * np.sqrt(2) * np.sin(angle)
+                
         if self.visualize and self.show_sensors:
             if index == int(self.n_sonar_sensors / 2):
                 pygame.draw.lines(self.surface, (255, 0, 0), False, [Vec2d(x,self.screen_y(y)), Vec2d(x1, self.screen_y(y1))], 1)
             else:
                 pygame.draw.lines(self.surface, (255, 255, 0), False, [Vec2d(x,self.screen_y(y)), Vec2d(x1, self.screen_y(y1))], 1)
 
-        robot_filter = pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS ^ 2)
-        seqment_query_info = self.space.segment_query_first(Vec2d(x,y), Vec2d(x1, y1), 0, shape_filter=robot_filter)
+        robot_filter = pymunk.ShapeFilter(mask=(pymunk.ShapeFilter.ALL_MASKS ^ 2 or pymunk.ShapeFilter.ALL_MASKS ^ 1))
+        seqment_query_info = self.space.segment_query_first(Vec2d(x, y), Vec2d(x1, y1), 0, shape_filter=robot_filter)
 
         if seqment_query_info is not None:
             if type(seqment_query_info.shape) == pymunk.shapes.Circle:
-                ping_type = 1.0  # pedestrian
+                rel_x = x1 - x
+                rel_y = y1 - y
             else:
-                ping_type = -1.0 # non-pedestrian
-            ping_x = seqment_query_info.point.x
-            ping_y = seqment_query_info.point.y
-            rel_x = ping_x - x
-            rel_y = ping_y - y
-            distance = np.linalg.norm((rel_x, rel_y))
+                ping_x = seqment_query_info.point.x
+                ping_y = seqment_query_info.point.y
+
+                rel_x = ping_x - x
+                rel_y = ping_y - y
         else:
-            distance = -self.max_pygame_sensor_range
+            rel_x = x1 - x
+            rel_y = y1 - y
         
-        return distance
+        return np.array([rel_x, rel_y])
     
     def get_sonar_readings(self, x, y, angle):
         readings = []
@@ -1357,7 +1383,9 @@ class CrowdSim(gym.Env):
             
         np_readings = np.array(readings, dtype=np.float32)
 
-        np_readings /= self.max_pygame_sensor_range
+        np_readings /= (self.square_width * self.scale_factor)
+        
+        #print(list(np_readings))
                         
         return np_readings
 
@@ -1371,7 +1399,7 @@ class CrowdSim(gym.Env):
             else:
                 pygame.draw.lines(self.surface, (255, 255, 0), False, [Vec2d(x,self.screen_y(y)), Vec2d(x1, self.screen_y(y1))], 1)
 
-        robot_filter = pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS ^ 2)
+        robot_filter = pymunk.ShapeFilter(mask=(pymunk.ShapeFilter.ALL_MASKS ^ 2))
         seqment_query_info = self.space.segment_query_first(Vec2d(x,y), Vec2d(x1, y1), 0, shape_filter=robot_filter)
 
         if seqment_query_info is not None:
@@ -1379,7 +1407,7 @@ class CrowdSim(gym.Env):
             ping_y = seqment_query_info.point.y
             distance = np.linalg.norm((ping_x - x, ping_y - y))
         else:
-            distance = self.max_pygame_sensor_range
+            distance = self.square_width * self.scale_factor
         
         return distance
 

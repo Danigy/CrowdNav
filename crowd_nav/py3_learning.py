@@ -8,9 +8,10 @@ import datetime
 import tensorflow as tf
 
 from stable_baselines.common.vec_env import DummyVecEnv
-from stable_baselines.sac.policies import MlpPolicy, FeedForwardPolicy
-from stable_baselines.common.policies import MlpLstmPolicy
-from stable_baselines import SAC
+from stable_baselines.sac.policies import MlpPolicy, FeedForwardPolicy, CnnPolicy
+from stable_baselines.common.policies import MlpLstmPolicy, ActorCriticPolicy, register_policy, mlp_extractor
+
+from stable_baselines import SAC, PPO2
 from stable_baselines.gail import ExpertDataset
 
 from collections import OrderedDict
@@ -26,7 +27,7 @@ from crowd_nav.policy.policy_factory import policy_factory
 
 ENV_NAME = 'CrowdSim-v0'
                 
-TUNING = True
+TUNING = False
 NN_TUNING = False
 
 class SimpleNavigation():
@@ -73,7 +74,8 @@ class SimpleNavigation():
             slack_reward = None
             energy_cost = None
 
-            learning_rate = 0.001
+            params['learning_trials'] = learning_trials = 500000
+            params['learning_rate'] = learning_rate = 0.0005
             
             #personal_space_cost = 0.0
             #slack_reward = -0.01
@@ -82,6 +84,7 @@ class SimpleNavigation():
                 nn_layers = [256, 128, 64]
                 gamma = 0.99
                 decay = 0
+                batch_norm = 'no'
         else:
             params = dict()
             success_reward = None
@@ -101,6 +104,7 @@ class SimpleNavigation():
             batch_norm = 'no'
             params['learning_trials'] = learning_trials = 500000
             params['learning_rate'] = learning_rate = 0.0005
+            params['arch'] = 'per'
 
         # configure policy
         policy = policy_factory[args.policy]()
@@ -158,7 +162,7 @@ class SimpleNavigation():
 
         weights_path = os.path.join(tb_log_dir, "model_weights.{epoch:02d}.h5")
  
-        model = SAC(CustomPolicy, env,verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate,  buffer_size=100000)
+        model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate, buffer_size=100000)
         
         if args.pre_train:
             pretrain_log_dir = os.path.expanduser('~') + '/tensorboard_logs/orca_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))            
@@ -198,7 +202,7 @@ class SimpleNavigation():
                     n_episodes += 1
                     #del info['terminal_observation']
                     if n_episodes % 2 == 0:
-                        print("episodes:", n_episodes, [(key, trunc(info[0][key], 1)) for key in ['success_rate', 'ped_collision_rate', 'collision_rate', 'timeouts', 'personal_space_violations']])
+                        print("episodes:", n_episodes, [(key, trunc(info[0][key], 1)) for key in ['success_rate', 'ped_collision_rate', 'collision_rate', 'timeout_rate', 'personal_space_violations']])
                     obs = env.reset()
 
             env.close()
@@ -209,7 +213,20 @@ class SimpleNavigation():
         print(">>>>> End testing <<<<<", self.string_to_filename(json.dumps(params)))
         print("Final weights saved at: ", tb_log_dir + "/stable_baselines.pkl")
         
-        print("TEST COMMAND:\n\npython3 py3_learning.py --test --weights ", tb_log_dir + "/stable_baselines.pkl --visualize")
+        print("\nTEST COMMAND:\n\npython3 py3_learning.py --test --weights ", tb_log_dir + "/stable_baselines.pkl --visualize")
+        
+        print("\nTESTING for 100 episodes with params:", params, "\n")
+        obs = env.reset()
+        n_episodes = 0
+        n_test_episodes = 100
+        while n_episodes < n_test_episodes:
+            action, _states = model.predict(obs)
+            obs, rewards, done, info = env.step(action)
+            if done:
+                n_episodes += 1
+                if n_episodes % 100 == 0:
+                    print("episodes:", n_episodes, [(key, trunc(info[0][key], 1)) for key in ['success_rate', 'ped_collision_rate', 'collision_rate', 'timeout_rate', 'personal_space_violations']])
+                    obs = env.reset()
         
         env.close()
     
@@ -271,7 +288,7 @@ class SimpleNavigation():
         return True  
     
 def launch_learn(params):
-    print("Starting test with params:", params)
+    print("Starting training with params:", params)
     SimpleNavigation(sys.argv, params)
 
 if __name__ == '__main__':
@@ -280,7 +297,49 @@ if __name__ == '__main__':
     def trunc(f, n):
         # Truncates/pads a float f to n decimal places without rounding
         slen = len('%.*f' % (n, f))
-        return float(str(f)[:slen]) 
+        return float(str(f)[:slen])
+    
+    class CustomPolicy2(ActorCriticPolicy):
+        def __init__(self, sess, ob_space, ac_space, n_env=1, n_steps=1, n_batch=1, reuse=tf.AUTO_REUSE, **kwargs):
+            super(CustomPolicy2, self).__init__(sess, ob_space, ac_space, n_env, n_steps, n_batch, reuse=reuse, scale=False, **kwargs)
+    
+            with tf.variable_scope("model", reuse=reuse):
+                activ = tf.nn.relu
+    
+                #extracted_features = mlp_extractor(self.processed_obs, net_arch=[256, 128, 64], act_fun=activ, **kwargs)
+                extracted_features = tf.layers.flatten(self.processed_obs)
+    
+                pi_h = extracted_features
+                for i, layer_size in enumerate([256, 128, 64]):
+                    pi_h = activ(tf.layers.dense(pi_h, layer_size, name='pi_fc' + str(i)))
+                pi_latent = pi_h
+    
+                vf_h = extracted_features
+                for i, layer_size in enumerate([32, 32]):
+                    vf_h = activ(tf.layers.dense(vf_h, layer_size, name='vf_fc' + str(i)))
+                value_fn = tf.layers.dense(vf_h, 1, name='vf')
+                vf_latent = vf_h
+    
+                self._proba_distribution, self._policy, self.q_value = \
+                    self.pdtype.proba_distribution_from_latent(pi_latent, vf_latent, init_scale=0.01)
+    
+            self._value_fn = value_fn
+            self._setup_init()
+    
+        def step(self, obs, state=None, mask=None, deterministic=False):
+            if deterministic:
+                action, value, neglogp = self.sess.run([self.deterministic_action, self.value_flat, self.neglogp],
+                                                       {self.obs_ph: obs})
+            else:
+                action, value, neglogp = self.sess.run([self.action, self.value_flat, self.neglogp],
+                                                       {self.obs_ph: obs})
+            return action, value, self.initial_state, neglogp
+    
+        def proba_step(self, obs, state=None, mask=None):
+            return self.sess.run(self.policy_proba, {self.obs_ph: obs})
+    
+        def value(self, obs, state=None, mask=None):
+            return self.sess.run(self.value_flat, {self.obs_ph: obs})
     
     class CustomPolicy(FeedForwardPolicy):
         def __init__(self, *args, **kwargs):
@@ -319,7 +378,7 @@ if __name__ == '__main__':
             for safety_penalty_factor in safety_penalty_factors:
                 params = {
                           "discomfort": discomfort_penalty_factor,
-                          "safety": energy_cost
+                          "safety": safety_penalty_factor
                           }
                 param_list.append(params)
 

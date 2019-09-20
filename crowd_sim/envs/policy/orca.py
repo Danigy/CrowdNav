@@ -98,10 +98,10 @@ class ORCA(Policy):
         if self.sim is None:
             self.sim = rvo2.PyRVOSimulator(self.time_step, *params, self.radius, self.max_speed)
             
-            o1 = self.sim.addObstacle([(-1, 1), (1, 1)])
-            o2 = self.sim.addObstacle([(1, 1), (1, -1)])
-            o3 = self.sim.addObstacle([(1, -1), (-1, -1)])
-            o4 = self.sim.addObstacle([(-1, -1), (-1, 1)])
+            o1 = self.sim.addObstacle([(-0.5, 0.5), (0.5, 0.5)])
+            o2 = self.sim.addObstacle([(0.5, 0.5), (0.5, -0.5)])
+            o3 = self.sim.addObstacle([(0.5, -0.5), (-0.5, -0.5)])
+            o4 = self.sim.addObstacle([(-0.5, -0.5), (-0.5, 0.5)])
 
             self.sim.processObstacles()
             self.sim.addAgent(self_state.position, *params, self_state.radius + 0.01 + self_state.personal_space / 2.0,
