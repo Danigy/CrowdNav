@@ -3,7 +3,7 @@ from numpy.linalg import norm
 import abc
 import logging
 from crowd_sim.envs.policy.policy_factory import policy_factory
-from crowd_sim.envs.utils.action import ActionXY, ActionRot
+from crowd_sim.envs.utils.action import ActionXY, ActionRot, ActionDiscrete
 from crowd_sim.envs.utils.state import ObservableState, FullState
 
 
@@ -77,6 +77,25 @@ class Agent(object):
             next_vx = action.vx
             next_vy = action.vy
             next_vr = 0.0
+        elif self.kinematics == 'discrete':
+            if action == ActionDiscrete.stop:
+                next_vx = 0.0
+                next_vy = 0.0                
+                next_vr = 0.0
+            elif action == ActionDiscrete.forward:
+                next_vx = self.vpref * np.cos(next_theta)
+                next_vy = self.vpref * np.cos(next_theta)
+                next_vr = 0.0
+            elif action == ActionDiscrete.left:
+                next_vx = self.vx
+                next_vy = self.vy                
+                next_vr = -self.max_angular_velocity
+            elif action == ActionDiscrete.right:
+                next_vx = self.vx
+                next_vy = self.vy                
+                next_vr = self.max_angular_velocity
+            else:
+                raise ValueError('Invalid action: ' + str(action))
         else:
             next_vx = action.v * np.cos(next_theta)
             next_vy = action.v * np.sin(next_theta)

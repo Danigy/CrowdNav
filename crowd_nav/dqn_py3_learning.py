@@ -8,10 +8,9 @@ import datetime
 import tensorflow as tf
 
 from stable_baselines.common.vec_env import DummyVecEnv
-from stable_baselines.sac.policies import MlpPolicy, FeedForwardPolicy, CnnPolicy
-from stable_baselines.common.policies import MlpLstmPolicy, ActorCriticPolicy, register_policy, mlp_extractor
+from stable_baselines.deepq.policies import MlpPolicy, FeedForwardPolicy
+from stable_baselines import DQN
 
-from stable_baselines import SAC, PPO2
 from stable_baselines.gail import ExpertDataset
 
 from collections import OrderedDict
@@ -162,7 +161,7 @@ class SimpleNavigation():
 
         weights_path = os.path.join(tb_log_dir, "model_weights.{epoch:02d}.h5")
  
-        model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate, buffer_size=100000)
+        model = DQN(MlpPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate, buffer_size=100000)
         
         if args.pre_train:
             pretrain_log_dir = os.path.expanduser('~') + '/tensorboard_logs/orca_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))            
@@ -191,7 +190,7 @@ class SimpleNavigation():
 
         if args.test:
             print("Testing!")
-            model = SAC.load(args.weights)
+            model = DQN.load(args.weights)
             obs = env.reset()
             n_episodes = 0
             n_test_episodes = 10000
@@ -298,48 +297,6 @@ if __name__ == '__main__':
         # Truncates/pads a float f to n decimal places without rounding
         slen = len('%.*f' % (n, f))
         return float(str(f)[:slen])
-    
-    class CustomPolicy2(ActorCriticPolicy):
-        def __init__(self, sess, ob_space, ac_space, n_env=1, n_steps=1, n_batch=1, reuse=tf.AUTO_REUSE, **kwargs):
-            super(CustomPolicy2, self).__init__(sess, ob_space, ac_space, n_env, n_steps, n_batch, reuse=reuse, scale=False, **kwargs)
-    
-            with tf.variable_scope("model", reuse=reuse):
-                activ = tf.nn.relu
-    
-                #extracted_features = mlp_extractor(self.processed_obs, net_arch=[256, 128, 64], act_fun=activ, **kwargs)
-                extracted_features = tf.layers.flatten(self.processed_obs)
-    
-                pi_h = extracted_features
-                for i, layer_size in enumerate([256, 128, 64]):
-                    pi_h = activ(tf.layers.dense(pi_h, layer_size, name='pi_fc' + str(i)))
-                pi_latent = pi_h
-    
-                vf_h = extracted_features
-                for i, layer_size in enumerate([32, 32]):
-                    vf_h = activ(tf.layers.dense(vf_h, layer_size, name='vf_fc' + str(i)))
-                value_fn = tf.layers.dense(vf_h, 1, name='vf')
-                vf_latent = vf_h
-    
-                self._proba_distribution, self._policy, self.q_value = \
-                    self.pdtype.proba_distribution_from_latent(pi_latent, vf_latent, init_scale=0.01)
-    
-            self._value_fn = value_fn
-            self._setup_init()
-    
-        def step(self, obs, state=None, mask=None, deterministic=False):
-            if deterministic:
-                action, value, neglogp = self.sess.run([self.deterministic_action, self.value_flat, self.neglogp],
-                                                       {self.obs_ph: obs})
-            else:
-                action, value, neglogp = self.sess.run([self.action, self.value_flat, self.neglogp],
-                                                       {self.obs_ph: obs})
-            return action, value, self.initial_state, neglogp
-    
-        def proba_step(self, obs, state=None, mask=None):
-            return self.sess.run(self.policy_proba, {self.obs_ph: obs})
-    
-        def value(self, obs, state=None, mask=None):
-            return self.sess.run(self.value_flat, {self.obs_ph: obs})
     
     class CustomPolicy(FeedForwardPolicy):
         def __init__(self, *args, **kwargs):
