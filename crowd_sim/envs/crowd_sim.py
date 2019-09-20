@@ -298,7 +298,7 @@ class CrowdSim(gym.Env):
              
         self.space.add(self.static)
 
-        self.action_space = spaces.Box(-1.0, 1.0, shape=[2,])
+        self.action_space = spaces.Discrete(4)
         #self.observation_space = spaces.Box(-1.0, 1.0, shape=[2 + 3 + 5 * self.human_num,])
         self.observation_space = spaces.Box(-1.0, 1.0, shape=[self.n_sonar_sensors + 2 + 5 * self.human_num,])
         
@@ -884,6 +884,8 @@ class CrowdSim(gym.Env):
         if self.robot.kinematics == 'holonomic':
             scaled_action = ActionXY(action[0] * self.robot.v_pref, action[1] * self.robot.v_pref)
             #action = ActionXY(action[0], action[1])
+        elif self.robot.kinematics == 'discrete':
+            scaled_action = action
         else:
             # Only allow forward motion and rotations
             #action = ActionRot(((action[0] + 1.0) / 2.0) * self.robot.v_pref, action[1])

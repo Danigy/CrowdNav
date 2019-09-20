@@ -77,29 +77,29 @@ class Agent(object):
             next_vx = action.vx
             next_vy = action.vy
             next_vr = 0.0
+        elif self.kinematics == 'unicycle':
+            next_vx = action.v * np.cos(next_theta)
+            next_vy = action.v * np.sin(next_theta)
+            next_vr = action.r
         elif self.kinematics == 'discrete':
-            if action == ActionDiscrete.stop:
+            if action == 0:
                 next_vx = 0.0
                 next_vy = 0.0                
                 next_vr = 0.0
-            elif action == ActionDiscrete.forward:
-                next_vx = self.vpref * np.cos(next_theta)
-                next_vy = self.vpref * np.cos(next_theta)
+            elif action == 1:
+                next_vx = self.v_pref * np.cos(next_theta)
+                next_vy = self.v_pref * np.cos(next_theta)
                 next_vr = 0.0
-            elif action == ActionDiscrete.left:
+            elif action == 2:
                 next_vx = self.vx
                 next_vy = self.vy                
                 next_vr = -self.max_angular_velocity
-            elif action == ActionDiscrete.right:
+            elif action == 3:
                 next_vx = self.vx
                 next_vy = self.vy                
                 next_vr = self.max_angular_velocity
             else:
                 raise ValueError('Invalid action: ' + str(action))
-        else:
-            next_vx = action.v * np.cos(next_theta)
-            next_vy = action.v * np.sin(next_theta)
-            next_vr = action.r
             
         return ObservableState(next_px, next_py, next_theta, next_vx, next_vy, next_vr, self.radius, self.personal_space)
 
@@ -137,7 +137,7 @@ class Agent(object):
     def check_validity(self, action):
         if self.kinematics == 'holonomic':
             assert isinstance(action, ActionXY)
-        else:
+        elif self.kinematics == 'unicycle':
             assert isinstance(action, ActionRot)
 
 #     def compute_position(self, action, delta_t, no_action=False):
@@ -171,10 +171,14 @@ class Agent(object):
                 px = self.px + action.vx * delta_t
                 py = self.py + action.vy * delta_t
                 theta = self.theta
-            else:
+            elif self.kinematics == 'unicycle':
                 theta = (self.theta + action.r * delta_t) % (2 * np.pi)
                 px = self.px + np.cos(theta) * action.v * delta_t
                 py = self.py + np.sin(theta) * action.v * delta_t
+            else:
+                px = self.px + self.vx * delta_t
+                py = self.py + self.vy * delta_t
+                theta = (self.theta + self.vr * delta_t) % (2 * np.pi)                
 
         return px, py, theta
     
@@ -191,10 +195,29 @@ class Agent(object):
             self.vx = action.vx
             self.vy = action.vy
             self.vr = 0.0
-        else:
+        elif self.kinematics == 'unicycle':
             self.vx = action.v * np.cos(self.theta)
             self.vy = action.v * np.sin(self.theta)
             self.vr = action.r
+        elif self.kinematics == 'discrete':
+            if action == 0:
+                self.vx = 0.0
+                self.vy = 0.0                
+                self.vr = 0.0
+            elif action == 1:
+                self.vx = self.v_pref * np.cos(self.theta)
+                self.vy = self.v_pref * np.cos(self.theta)
+                self.vr = 0.0
+            elif action == 2:
+                self.vx = self.vx
+                self.vy = self.vy                
+                self.vr = -self.max_angular_velocity
+            elif action == 3:
+                self.vx = self.vx
+                self.vy = self.vy                
+                self.vr = self.max_angular_velocity
+            else:
+                raise ValueError('Invalid action: ' + str(action))
 
 #     def step(self, action):
 #         """

@@ -4,10 +4,11 @@ ActionXY = namedtuple('ActionXY', ['vx', 'vy'])
 ActionRot = namedtuple('ActionRot', ['v', 'r'])
 
 class ActionDiscrete():
-    stop = 0
-    forward = 1
-    backward = 2
-    left = 3
-    right = 4
+    def __init__(self, action):
+        stop = 0
+        forward = 1
+        backward = 2
+        left = 3
+        right = 4
 
 
