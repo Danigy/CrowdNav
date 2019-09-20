@@ -73,8 +73,8 @@ class SimpleNavigation():
             slack_reward = None
             energy_cost = None
 
-            params['learning_trials'] = learning_trials = 1500000
-            params['learning_rate'] = learning_rate = 0.0003
+            params['learning_trials'] = learning_trials = 500000
+            params['learning_rate'] = learning_rate = 0.0005
             
             #personal_space_cost = 0.0
             #slack_reward = -0.01
@@ -101,8 +101,8 @@ class SimpleNavigation():
             gamma = 0.99
             decay = 0
             batch_norm = 'no'
-            params['learning_trials'] = learning_trials = 1500000
-            params['learning_rate'] = learning_rate = 0.0003
+            params['learning_trials'] = learning_trials = 500000
+            params['learning_rate'] = learning_rate = 0.0005
             params['arch'] = 'per'
 
         # configure policy
@@ -145,17 +145,17 @@ class SimpleNavigation():
 
         if TUNING or NN_TUNING:
             if args.pre_train:
-                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_pretrain_n_peds_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))
+                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/dqn_pretrain_n_peds_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))
             else:
-                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_n_peds_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))
+                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/dqn_n_peds_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))
 
-            save_weights_file = tb_log_dir + '/sac_' + ENV_NAME + '_weights_' + self.string_to_filename(json.dumps(params)) +'.h5f'
+            save_weights_file = tb_log_dir + '/dqn_' + ENV_NAME + '_weights_' + self.string_to_filename(json.dumps(params)) +'.h5f'
 
         else:
             if args.pre_train:
-                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_pretrain_n_peds_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))
+                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/dqn_pretrain_n_peds_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))
             else:
-                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_n_peds_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))
+                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/dqn_n_peds_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))
 
             save_weights_file = tb_log_dir + '/sac' + ENV_NAME + '_weights_final' + '.h5f'
 
