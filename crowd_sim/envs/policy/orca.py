@@ -104,6 +104,7 @@ class ORCA(Policy):
             o4 = self.sim.addObstacle([(-0.5, -0.5), (-0.5, 0.5)])
 
             self.sim.processObstacles()
+            
             self.sim.addAgent(self_state.position, *params, self_state.radius + 0.01 + self_state.personal_space / 2.0,
                               self_state.v_pref, self_state.velocity)
             for human_state in state.human_states:

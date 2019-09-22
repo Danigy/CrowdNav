@@ -4,7 +4,7 @@ import abc
 import logging
 from crowd_sim.envs.policy.policy_factory import policy_factory
 from crowd_sim.envs.utils.action import ActionXY, ActionRot
-from crowd_sim.envs.utils.state import ObservableState, FullState
+from crowd_sim.envs.utils.state import ObservableState, FullState, ObstacleState
 
 
 class Agent(object):

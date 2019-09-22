@@ -102,8 +102,8 @@ class SimpleNavigation():
             gamma = 0.99
             decay = 0
             batch_norm = 'no'
-            params['learning_trials'] = learning_trials = 500000
-            params['learning_rate'] = learning_rate = 0.0005
+            params['learning_trials'] = learning_trials = 5000000
+            params['learning_rate'] = learning_rate = 0.0001
             params['arch'] = 'per'
 
         # configure policy

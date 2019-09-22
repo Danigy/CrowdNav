@@ -19,6 +19,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'envs'))
 sys.path.append(os.path.join(os.path.dirname(__file__), 'envs/utils'))
 
 from crowd_sim.envs.utils.human import Human
+from crowd_sim.envs.utils.obstacle import Obstacle
 from crowd_sim.envs.utils.info import Timeout, Danger, ReachGoal, Collision, Nothing
 from crowd_sim.envs.utils.utils import point_to_segment_dist
 from crowd_sim.envs.utils.action import ActionXY, ActionRot
@@ -135,11 +136,11 @@ class CrowdSim(gym.Env):
         self.robot_body.angle = r
         self.robot_shape = pymunk.Circle(self.robot_body, robot_radius)
         self.robot_shape.color = THECOLORS["white"]
-        self.robot_shape.group = 2
-        robot_filter = pymunk.ShapeFilter(categories=2)
+        self.robot_shape.group = 1
+        self.robot_shape.collision_type = 1
+        robot_filter = pymunk.ShapeFilter(categories=1)
         self.robot_shape.filter = robot_filter
         self.robot_shape.elasticity = 1.0
-        self.robot_shape.collision_type = 1
         collison_pedestrian = self.space.add_collision_handler(1, 2)
         collison_object = self.space.add_collision_handler(1, 3)
         collison_pedestrian.begin = self.collision_pedestrian_begin
@@ -154,32 +155,37 @@ class CrowdSim(gym.Env):
         ped_body = pymunk.Body(1000, 1000)
         ped_shape = pymunk.Circle(ped_body, r)
         ped_shape.elasticity = 1.0
+        ped_shape.group = 2
         ped_shape.collision_type = 2
+        ped_filter = pymunk.ShapeFilter(categories=2)
+        ped_shape.filter = ped_filter
         ped_body.position = x, y
         ped_body.velocity = Vec2d(0, 0)
         ped_shape.color = THECOLORS["orange"]
         self.space.add(ped_body, ped_shape)
         return [ped_body, ped_shape]
     
-    def crowd_obstacle_to_pygame(self, obstacle):
+    def create_obstacle(self, x, y, r, obstacle_vertices):
         #pygame_segments = tuple(pygame_segments * self.scale_factor + self.width
-        vertices = np.array(obstacle)
+        vertices = np.array(obstacle_vertices)
         
-        for i in range(len(obstacle)):
+        for i in range(len(obstacle_vertices)):
             vertices[i][0] = vertices[i][0] * self.scale_factor + self.width/2
             vertices[i][1] = vertices[i][1] * self.scale_factor + self.height/2
-
-        pymunk_obstacle = pymunk.Poly(self.space.static_body, vertices)
-
-        pymunk_obstacle.group = 1
-        
-        return pymunk_obstacle
-
-#         for segment in pygame_segments:
-#             self.static.append(pymunk.Segment(
-#                     self.space.static_body,
-#                     (segment[0][0] * self.scale_factor + self.width/2, segment[0][1] * self.scale_factor + self.height/2),
-#                     (segment[1][0] * self.scale_factor + self.width/2, segment[1][1] * self.scale_factor + self.height/2), 5))
+    
+        obstacle_body = pymunk.Body(1000, 1000)
+        obstacle_shape = pymunk.Poly(obstacle_body, vertices)
+        obstacle_shape.elasticity = 1.0
+        obstacle_shape.group = 3
+        obstacle_shape.collision_type = 3
+        obstacle_filter = pymunk.ShapeFilter(categories=3)
+        obstacle_shape.filter = obstacle_filter
+        obstacle_body.position = x, y
+        obstacle_body.angle = r
+        obstacle_body.velocity = Vec2d(0, 0)
+        obstacle_shape.color = THECOLORS["red"]
+        self.space.add(obstacle_body, obstacle_shape)
+        return [obstacle_body, obstacle_shape]
 
     def configure(self, config):
         self.config = config
@@ -257,6 +263,7 @@ class CrowdSim(gym.Env):
         # List to hold the pedestrians
         self.pedestrians = []
         
+        # A list of static obstacles
         self.obstacles = []
         
         # Create walls.
@@ -278,25 +285,21 @@ class CrowdSim(gym.Env):
                 #                 self.space.static_body,
                 #                 (self.width/2, self.height/2), (self.width/2, 1), 2)
             ]
-
+            
+        for s in self.static:
+            s.friction = 1.
+            s.group = 3
+            s.collision_type = 3
+            obstacle_filter = pymunk.ShapeFilter(categories=3)
+            s.filter = obstacle_filter
+            s.color = THECOLORS["red"]
         
         # Create obstacles
         if self.create_obstacles:            
             o1 = [(-0.5, -0.5), (-0.5, 0.5), (0.5, 0.5), (0.5, -0.5)]
             
-            pymunk_obstacle = self.crowd_obstacle_to_pygame(o1)
-            self.static.append(pymunk_obstacle)
-
-        for s in self.static:
-            s.friction = 1.
-            s.group = 1
-            obstacle_filter = pymunk.ShapeFilter(categories=1)
-            s.filter = obstacle_filter
-            s.collision_type = 3
-            s.color = THECOLORS["red"]
-            self.obstacles.append(s)
-             
-        self.space.add(self.static)
+            pymunk_obstacle = self.create_obstacle(0, 0, 0, o1)
+            self.obstacles.append(pymunk_obstacle)
 
         self.action_space = spaces.Box(-1.0, 1.0, shape=[2,])
         #self.observation_space = spaces.Box(-1.0, 1.0, shape=[2 + 3 + 5 * self.human_num,])
@@ -304,6 +307,18 @@ class CrowdSim(gym.Env):
         
     def set_robot(self, robot):
         self.robot = robot
+        
+    def generate_random_obstacle_positions(self):
+        n_obstacles = len(self.obstacles)
+        if n_obstacles > 0:
+            for i in range(n_obstacles):
+                self.space.remove(self.obstacles[i][0], self.obstacles[i][1])                    
+                    
+        self.obstacles = []
+    
+        for i in range(n_obstacles):
+            self.obstacles.append(self.create_obstacle(x, y, r, obstacle_vertices)(self.scale_factor * self.humans[i].px + self.width/2, self.scale_factor * self.humans[i].py + self.height/2, self.scale_factor * self.humans[i].radius))
+
 
     def generate_random_human_position(self, human_num, rule):
         """
@@ -774,6 +789,8 @@ class CrowdSim(gym.Env):
         """
         self.n_steps = 0
         
+        print(self.obstacles[0][0].position)
+        
         if self.robot is None:
             raise AttributeError('robot has to be set!')
         assert phase in ['train', 'val', 'test']
@@ -835,6 +852,11 @@ class CrowdSim(gym.Env):
                     self.humans[2].set(5, -5, 5, 5, 0, 0, np.pi / 2)
                 else:
                     raise NotImplementedError
+                
+
+        if len(self.obstacles) > 0:
+            for i in range(len(self.obstacles)):
+                self.obstacles[i][0].position = Vec2d(np.random.uniform(-100, 100), np.random.uniform(-100, 100))             
         
         try:
             self.robot_body.position
@@ -962,32 +984,32 @@ class CrowdSim(gym.Env):
             pygame.draw.circle(self.surface, (255, 255, 255, 40), (pygame_robot_px, self.screen_y(pygame_robot_py)), int(self.scale_factor * self.robot.personal_space))
         
         index = 0
-        
-        for human in self.humans:
-            human_state = human.get_full_state()
+
+        if self.visualize:
+            for human in self.humans:
+                human_state = human.get_full_state()
+                
+                pygame_px = int(self.scale_factor * human_state.px + self.width/2)
+                pygame_py = int(self.scale_factor * human_state.py + self.height/2)
+                
+                self.pedestrians[index][0].position = Vec2d(pygame_px, pygame_py)
+    
+                # Show the elongation of the personal space in the direction of motion
+                px = human_state.px - self.robot.px
+                py = human_state.py - self.robot.py
+    
+                #if self.robot.kinematics == 'holonomic':
+                vx = human_state.vx
+                vy = human_state.vy
+                #else:
+                #    raise NotImplementedError
             
-            pygame_px = int(self.scale_factor * human_state.px + self.width/2)
-            pygame_py = int(self.scale_factor * human_state.py + self.height/2)
-            
-            self.pedestrians[index][0].position = Vec2d(pygame_px, pygame_py)
-
-            # Show the elongation of the personal space in the direction of motion
-            px = human_state.px - self.robot.px
-            py = human_state.py - self.robot.py
-
-            #if self.robot.kinematics == 'holonomic':
-            vx = human_state.vx
-            vy = human_state.vy
-            #else:
-            #    raise NotImplementedError
-        
-            ex = human_state.px + vx * self.lookahead_interval
-            ey = human_state.py + vy * self.lookahead_interval
-
-            pygame_ex = int(self.scale_factor * ex + self.width/2)
-            pygame_ey = int(self.scale_factor * ey + self.height/2)
-
-            if self.visualize:
+                ex = human_state.px + vx * self.lookahead_interval
+                ey = human_state.py + vy * self.lookahead_interval
+    
+                pygame_ex = int(self.scale_factor * ex + self.width/2)
+                pygame_ey = int(self.scale_factor * ey + self.height/2)
+    
                 pygame.draw.circle(self.surface, (255, 255, 255, 40), (pygame_px, self.screen_y(pygame_py)), int(self.scale_factor * human.personal_space))
 
                 pygame.draw.lines(self.surface, (0, 255, 0), False, [Vec2d(pygame_px, self.screen_y(pygame_py)), Vec2d(pygame_ex, self.screen_y(pygame_ey))], 3)                
@@ -995,16 +1017,11 @@ class CrowdSim(gym.Env):
                 pygame_gx = int(self.scale_factor * human_state.gx + self.width/2)
                 pygame_gy = int(self.scale_factor * human_state.gy + self.height/2)
                 pygame.draw.circle(self.surface, (255, 0, 0, 200), (pygame_gx, self.screen_y(pygame_gy)), 10)                
+    
+                index += 1            
 
-            index += 1
-            
-        # Update Pymunk
-        self.space.step(self.time_step)
-            
-        if self.visualize:
             for obstacle in self.obstacles:
-                if type(obstacle) == pymunk.shapes.Poly:
-                    pygame.draw.polygon(self.surface, (255, 0, 0, 200), obstacle.get_vertices())
+                pygame.draw.polygon(self.surface, (255, 0, 0, 255), obstacle[1].get_vertices())
             
             self.space.debug_draw(self.draw_options)
             self.screen.blit(self.surface, (0, 0))
@@ -1013,6 +1030,10 @@ class CrowdSim(gym.Env):
             self.surface.fill(THECOLORS["black"])
             
             self.clock.tick(self.display_fps)
+            
+        # Update Pymunk
+        self.space.step(self.time_step)
+            
         if debug or self.expert_policy:
             return state, ob, reward, done, info
         else:
@@ -1399,7 +1420,7 @@ class CrowdSim(gym.Env):
             else:
                 pygame.draw.lines(self.surface, (255, 255, 0), False, [Vec2d(x,self.screen_y(y)), Vec2d(x1, self.screen_y(y1))], 1)
 
-        robot_filter = pymunk.ShapeFilter(mask=(pymunk.ShapeFilter.ALL_MASKS ^ 2))
+        robot_filter = pymunk.ShapeFilter(mask=(pymunk.ShapeFilter.ALL_MASKS ^ 1))
         seqment_query_info = self.space.segment_query_first(Vec2d(x,y), Vec2d(x1, y1), 0, shape_filter=robot_filter)
 
         if seqment_query_info is not None:
