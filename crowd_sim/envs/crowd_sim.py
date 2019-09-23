@@ -1409,6 +1409,9 @@ class CrowdSim(gym.Env):
         else:
             distance = self.square_width * self.scale_factor
         
+        # add some noise
+        distance = (1.0 + random.uniform(-1, 1) * self.position_noise) * distance
+
         return distance
 
     def render(self, mode='human', output_file=None):
