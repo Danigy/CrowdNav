@@ -24,6 +24,7 @@ import crowd_sim
 from crowd_sim.envs.utils.info import *
 from crowd_sim.envs.utils.robot import Robot
 from crowd_nav.policy.policy_factory import policy_factory
+from crowd_nav.policy.common_custom_policies import CNN1DPolicy
 
 ENV_NAME = 'CrowdSim-v0'
                 
@@ -42,6 +43,8 @@ class SimpleNavigation():
         parser.add_argument('--policy_config', type=str, default='configs/policy.config')
         parser.add_argument('--train_config', type=str, default='configs/train.config')
         parser.add_argument('-p', '--pre_train', default=False, action='store_true')
+        parser.add_argument('--learning_trials', default=500000)
+        parser.add_argument('--learning_rate', default=0.0005)                
         
         args = parser.parse_args()
         #args = vars(parsed_args)
@@ -60,7 +63,7 @@ class SimpleNavigation():
             slack_reward = None
             energy_cost = None
             slack_reward = None
-            learning_rate = 0.001
+            learning_rate = args.learning_rate
         elif TUNING:
             success_reward = None
             potential_reward_weight = None
@@ -74,8 +77,9 @@ class SimpleNavigation():
             slack_reward = None
             energy_cost = None
 
-            params['learning_trials'] = learning_trials = 500000
-            params['learning_rate'] = learning_rate = 0.0005
+            params['learning_trials'] = learning_trials = args.learning_trials
+            params['learning_rate'] = learning_rate = args.learning_rate
+
             
             #personal_space_cost = 0.0
             #slack_reward = -0.01
@@ -102,9 +106,8 @@ class SimpleNavigation():
             gamma = 0.99
             decay = 0
             batch_norm = 'no'
-            params['learning_trials'] = learning_trials = 500000
-            params['learning_rate'] = learning_rate = 0.0005
-            params['arch'] = 'per'
+            params['learning_trials'] = learning_trials = args.learning_trials
+            params['learning_rate'] = learning_rate = args.learning_rate
 
         # configure policy
         policy = policy_factory[args.policy]()
@@ -162,7 +165,7 @@ class SimpleNavigation():
 
         weights_path = os.path.join(tb_log_dir, "model_weights.{epoch:02d}.h5")
  
-        model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate, buffer_size=100000)
+        model = SAC(eval("CNN1DPolicy"), env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate, buffer_size=100000)
         
         if args.pre_train:
             pretrain_log_dir = os.path.expanduser('~') + '/tensorboard_logs/orca_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))            
@@ -341,7 +344,7 @@ if __name__ == '__main__':
         def value(self, obs, state=None, mask=None):
             return self.sess.run(self.value_flat, {self.obs_ph: obs})
     
-    class CustomPolicy(FeedForwardPolicy):
+    class CustomPolicyX(FeedForwardPolicy):
         def __init__(self, *args, **kwargs):
             super(CustomPolicy, self).__init__(*args, layers=[256, 128, 64], layer_norm=False, feature_extraction="mlp", **kwargs)
 
