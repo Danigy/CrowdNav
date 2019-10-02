@@ -104,7 +104,7 @@ class SimpleNavigation():
             batch_norm = 'no'
             params['learning_trials'] = learning_trials = 500000
             params['learning_rate'] = learning_rate = 0.0005
-            params['arch'] = 'per'
+            params['arch'] = 'multi'
 
         # configure policy
         policy = policy_factory[args.policy]()
@@ -162,7 +162,12 @@ class SimpleNavigation():
 
         weights_path = os.path.join(tb_log_dir, "model_weights.{epoch:02d}.h5")
  
-        model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate, buffer_size=100000)
+        model = SAC(MlpPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate, buffer_size=100000)
+            
+#         policy_kwargs = {
+#             "mlp_extractor": self.custom_feature_extractor
+#         }
+
         
         if args.pre_train:
             pretrain_log_dir = os.path.expanduser('~') + '/tensorboard_logs/orca_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))            
@@ -213,7 +218,7 @@ class SimpleNavigation():
         print(">>>>> End testing <<<<<", self.string_to_filename(json.dumps(params)))
         print("Final weights saved at: ", tb_log_dir + "/stable_baselines.pkl")
 
-        print("\nTEST COMMAND:\n\npython3 py3_learning.py --test --weights ", tb_log_dir + "/stable_baselines.pkl --visualize")
+        print("\nTEST COMMAND:\n\npython3 py3_learning.py --test --weights ", tb_log_dir + "/stable_baselines.zip --visualize")
         
         print("\nTESTING for 100 episodes with params:", params, "\n")
 
@@ -285,7 +290,47 @@ class SimpleNavigation():
         self_ = locals_['self']
         print(locals_, globals_)
 
-        return True  
+        return True
+        
+    def custom_feature_extractor(self, state, **kwargs):
+            """
+            Copied from stable_baselines policies.py.
+            This is nature CNN head where last channel of the image contains
+            direct features on the last channel.
+    
+            :param scaled_images: (TensorFlow Tensor) Image input placeholder
+            :param kwargs: (dict) Extra keywords parameters for the convolutional layers of the CNN
+            :return: (TensorFlow Tensor) The CNN output layer
+            """
+            activ = tf.nn.relu
+            
+            num_direct_features = 0
+    
+            # Take last channel as direct features
+            other_features = tf.contrib.slim.flatten(state[..., -1])
+            # Take known amount of direct features, rest are padding zeros
+            other_features = other_features[:, :num_direct_features]
+    
+            state = state[..., :-1]
+    
+#             layer_1 = activ(conv(scaled_images, 'cnn1', n_filters=32, filter_size=8, stride=4, init_scale=np.sqrt(2), **kwargs))
+#             layer_2 = activ(conv(layer_1, 'cnn2', n_filters=64, filter_size=4, stride=2, init_scale=np.sqrt(2), **kwargs))
+#             layer_3 = activ(conv(layer_2, 'cnn3', n_filters=64, filter_size=3, stride=1, init_scale=np.sqrt(2), **kwargs))
+#             layer_3 = conv_to_fc(layer_3)
+
+            for i, layer_size in enumerate(layers):
+                output = tf.layers.dense(output, layer_size, name='fc' + str(i))
+                if layer_norm:
+                    output = tf.contrib.layers.layer_norm(output, center=True, scale=True)
+                    
+            output = activ_fn(output)
+    
+            #sensor_output = activ(linear(layer_3, 'cnn_fc1', n_hidden=512, init_scale=np.sqrt(2)))
+    
+            concat = tf.concat((sensor_output, other_features), axis=1)
+    
+            return other_features
+
     
 def launch_learn(params):
     print("Starting training with params:", params)
@@ -300,46 +345,31 @@ if __name__ == '__main__':
         return float(str(f)[:slen])
     
     class CustomPolicy2(ActorCriticPolicy):
-        def __init__(self, sess, ob_space, ac_space, n_env=1, n_steps=1, n_batch=1, reuse=tf.AUTO_REUSE, **kwargs):
-            super(CustomPolicy2, self).__init__(sess, ob_space, ac_space, n_env, n_steps, n_batch, reuse=reuse, scale=False, **kwargs)
+        def __init__(self, sess, ob_space, ac_space, n_env=1, n_steps=1, n_batch=None, reuse=False, **kwargs):
+            super(CustomPolicy2, self).__init__(sess, ob_space, ac_space, n_env, n_steps, n_batch, reuse=reuse, scale=False)
     
             with tf.variable_scope("model", reuse=reuse):
-                activ = tf.nn.relu
+                activ = tf.nn.tanh
     
-                #extracted_features = mlp_extractor(self.processed_obs, net_arch=[256, 128, 64], act_fun=activ, **kwargs)
                 extracted_features = tf.layers.flatten(self.processed_obs)
     
                 pi_h = extracted_features
-                for i, layer_size in enumerate([256, 128, 64]):
+                for i, layer_size in enumerate([64, 64]):
                     pi_h = activ(tf.layers.dense(pi_h, layer_size, name='pi_fc' + str(i)))
                 pi_latent = pi_h
     
                 vf_h = extracted_features
-                for i, layer_size in enumerate([32, 32]):
+                for i, layer_size in enumerate([64, 64]):
                     vf_h = activ(tf.layers.dense(vf_h, layer_size, name='vf_fc' + str(i)))
                 value_fn = tf.layers.dense(vf_h, 1, name='vf')
                 vf_latent = vf_h
     
-                self._proba_distribution, self._policy, self.q_value = \
+                self.proba_distribution, self.policy, self.q_value = \
                     self.pdtype.proba_distribution_from_latent(pi_latent, vf_latent, init_scale=0.01)
     
-            self._value_fn = value_fn
+            self.value_fn = value_fn
+            self.initial_state = None        
             self._setup_init()
-    
-        def step(self, obs, state=None, mask=None, deterministic=False):
-            if deterministic:
-                action, value, neglogp = self.sess.run([self.deterministic_action, self.value_flat, self.neglogp],
-                                                       {self.obs_ph: obs})
-            else:
-                action, value, neglogp = self.sess.run([self.action, self.value_flat, self.neglogp],
-                                                       {self.obs_ph: obs})
-            return action, value, self.initial_state, neglogp
-    
-        def proba_step(self, obs, state=None, mask=None):
-            return self.sess.run(self.policy_proba, {self.obs_ph: obs})
-    
-        def value(self, obs, state=None, mask=None):
-            return self.sess.run(self.value_flat, {self.obs_ph: obs})
     
     class CustomPolicy(FeedForwardPolicy):
         def __init__(self, *args, **kwargs):
