@@ -91,6 +91,7 @@ class ORCA(Policy):
         :return:
         """
         self_state = state.self_state
+        #obstacles = state.obstacles
         params = self.neighbor_dist, self.max_neighbors, self.time_horizon, self.time_horizon_obst
         if self.sim is not None and self.sim.getNumAgents() != len(state.human_states) + 1:
             del self.sim
@@ -98,17 +99,25 @@ class ORCA(Policy):
         if self.sim is None:
             self.sim = rvo2.PyRVOSimulator(self.time_step, *params, self.radius, self.max_speed)
             
-            o1 = self.sim.addObstacle([(-0.5, 0.5), (0.5, 0.5)])
-            o2 = self.sim.addObstacle([(0.5, 0.5), (0.5, -0.5)])
-            o3 = self.sim.addObstacle([(0.5, -0.5), (-0.5, -0.5)])
-            o4 = self.sim.addObstacle([(-0.5, -0.5), (-0.5, 0.5)])
-
-            self.sim.processObstacles()
             self.sim.addAgent(self_state.position, *params, self_state.radius + 0.01 + self_state.personal_space / 2.0,
                               self_state.v_pref, self_state.velocity)
             for human_state in state.human_states:
                 self.sim.addAgent(human_state.position, *params, human_state.radius + 0.01 + human_state.personal_space / 2.0,
                                   self.max_speed, human_state.velocity)
+            
+            obstacles = list()
+            obstacles.append([(-1.0, 2.5), (1.0, 2.5), (1.0, 1.5), (-1.0, 1.5)])
+            obstacles.append([(-3.0, 0.5), (-2.5, 0.5), (-2.5, -0.5), (-3.0, -0.5)])
+            obstacles.append([(4.0, 0.5), (3.5, 0.5), (3.5, 0.0), (4.0, 0.0)])
+            
+            for obstacle in obstacles:
+                for i in range(len(obstacle) - 1):
+                    self.sim.addObstacle([obstacle[i], obstacle[i+1]])
+                    
+                self.sim.addObstacle([obstacle[len(obstacle) - 1], obstacle[0]])
+
+            self.sim.processObstacles()
+            
         else:
             self.sim.setAgentPosition(0, self_state.position)
             self.sim.setAgentVelocity(0, self_state.velocity)

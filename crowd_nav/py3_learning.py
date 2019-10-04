@@ -74,8 +74,8 @@ class SimpleNavigation():
             slack_reward = None
             energy_cost = None
 
-            params['learning_trials'] = learning_trials = 500000
-            params['learning_rate'] = learning_rate = 0.0005
+            params['learning_trials'] = learning_trials = 200000
+            params['learning_rate'] = learning_rate = 0.001
             
             #personal_space_cost = 0.0
             #slack_reward = -0.01
@@ -90,7 +90,7 @@ class SimpleNavigation():
             success_reward = None
             potential_reward_weight = None
             collision_penalty = None
-            discomfort_dist = None            
+            discomfort_dist = None
             discomfort_penalty_factor = None
             safety_penalty_factor = None
             safe_obstacle_distance = None
@@ -102,9 +102,9 @@ class SimpleNavigation():
             gamma = 0.99
             decay = 0
             batch_norm = 'no'
-            params['learning_trials'] = learning_trials = 500000
-            params['learning_rate'] = learning_rate = 0.0005
-            params['arch'] = 'multi'
+            params['learning_trials'] = learning_trials = 1000000
+            params['learning_rate'] = learning_rate = 0.0001
+            params['arch'] = 'fixed'
 
         # configure policy
         policy = policy_factory[args.policy]()
@@ -162,7 +162,7 @@ class SimpleNavigation():
 
         weights_path = os.path.join(tb_log_dir, "model_weights.{epoch:02d}.h5")
  
-        model = SAC(MlpPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate, buffer_size=100000)
+        model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate, buffer_size=100000)
             
 #         policy_kwargs = {
 #             "mlp_extractor": self.custom_feature_extractor

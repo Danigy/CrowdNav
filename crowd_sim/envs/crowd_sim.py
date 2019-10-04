@@ -166,8 +166,8 @@ class CrowdSim(gym.Env):
         vertices = np.array(obstacle)
         
         for i in range(len(obstacle)):
-            vertices[i][0] = vertices[i][0] * self.scale_factor + self.width/2
-            vertices[i][1] = vertices[i][1] * self.scale_factor + self.height/2
+            vertices[i][0] = vertices[i][0] * self.scale_factor + self.width/2.0
+            vertices[i][1] = vertices[i][1] * self.scale_factor + self.height/2.0
 
         pymunk_obstacle = pymunk.Poly(self.space.static_body, vertices)
 
@@ -281,11 +281,17 @@ class CrowdSim(gym.Env):
 
         
         # Create obstacles
-        if self.create_obstacles:            
-            o1 = [(-0.5, -0.5), (-0.5, 0.5), (0.5, 0.5), (0.5, -0.5)]
-            
-            pymunk_obstacle = self.crowd_obstacle_to_pygame(o1)
-            self.static.append(pymunk_obstacle)
+        self.create_obstacles = True
+        if self.create_obstacles:   
+            obstacles = list()         
+            obstacles.append([(-1.0, 1.5), (1.0, 1.5), (1.0, 0.5), (-1.0, 0.5)])
+            obstacles.append([(-3.0, 0.5), (-2.5, 0.5), (-2.5, -0.5), (-3.0, -0.5)])
+            obstacles.append([(4.0, -0.5), (3.5, -0.5), (3.5, -1.5), (4.0, -1.5)])
+
+            for obstacle in obstacles:
+                pymunk_obstacle = self.crowd_obstacle_to_pygame(obstacle)
+                vertices = pymunk_obstacle.get_vertices()
+                self.static.append(pymunk_obstacle)
 
         for s in self.static:
             s.friction = 1.
@@ -299,9 +305,9 @@ class CrowdSim(gym.Env):
         self.space.add(self.static)
 
         self.action_space = spaces.Box(-1.0, 1.0, shape=[2,])
-        #self.observation_space = spaces.Box(-1.0, 1.0, shape=[2 + 3 + 5 * self.human_num,])
         self.observation_space = spaces.Box(-1.0, 1.0, shape=[self.n_sonar_sensors + 2 + 5 * self.human_num,])
-        
+        #self.observation_space = spaces.Box(-1.0, 1.0, shape=[8 + 2 + 5 * self.human_num,])
+
     def set_robot(self, robot):
         self.robot = robot
 
@@ -529,8 +535,13 @@ class CrowdSim(gym.Env):
         state = []
         
         if self.n_sonar_sensors > 0:
+            #state = [-0.5-self.robot.px, -0.5-self.robot.py, -0.5-self.robot.px, 0.5-self.robot.py, 0.5-self.robot.px, 0.5-self.robot.py, 0.5-self.robot.px, -0.5-self.robot.py]
+            #state = list(self.get_sonar_readings_xy(x, y, self.robot_body.angle))
             state = list(self.get_sonar_readings(x, y, self.robot_body.angle))
             self.sensor_readings = deepcopy(state)
+        
+        #print("RAW:", state_raw)
+        #print("STATE", state)
         
         if self.robot.kinematics == 'holonomic':
             gx = self.robot.gx - self.robot.px
@@ -1004,7 +1015,12 @@ class CrowdSim(gym.Env):
         if self.visualize:
             for obstacle in self.obstacles:
                 if type(obstacle) == pymunk.shapes.Poly:
-                    pygame.draw.polygon(self.surface, (255, 0, 0, 200), obstacle.get_vertices())
+                    vertices = obstacle.get_vertices()
+                    screen_vertices = list()
+                    for vertex in vertices:
+                        vertex[1] = self.screen_y(vertex[1])
+                        screen_vertices.append(vertex)
+                    pygame.draw.polygon(self.surface, (255, 0, 0, 100), screen_vertices)
             
             self.space.debug_draw(self.draw_options)
             self.screen.blit(self.surface, (0, 0))
@@ -1017,43 +1033,6 @@ class CrowdSim(gym.Env):
             return state, ob, reward, done, info
         else:
             return state, reward, done, info
-
-    def update_without_robot(self):
-        # store current positions and velocities of all humans
-        original_human_states = self.get_human_states()
-
-        human_actions = []
-        
-        for human in self.humans:
-            # observation for humans is always coordinates
-            ob = [other_human.get_observable_state() for other_human in self.humans if other_human != human]
-            human_actions.append(human.act(ob))
-            
-        # do a trial update without the robot moving
-        for i, human_action in enumerate(human_actions):
-            self.humans[i].step(human_action)
-
-        # store the updated states
-        self.human_position_updates_without_robot, self.human_velocity_updates_without_robot = self.get_human_states()
-        
-        # restore the original states
-        positions, velocities = original_human_states
-        self.set_human_states(positions, velocities)
-
-    def get_human_states(self):
-        human_positions = []
-        human_velocities = []            
-
-        for i in range(len(self.humans)):
-            human_positions.append([self.humans[i].px, self.humans[i].py, self.humans[i].theta])
-            human_velocities.append([self.humans[i].vx, self.humans[i].vy, self.humans[i].vr])
-
-        return human_positions, human_velocities
-
-    def set_human_states(self, positions, velocities):
-        for i in range(len(self.humans)):
-            self.humans[i].px, self.humans[i].py, self.humans[i].theta = positions[i]
-            self.humans[i].vx, self.humans[i].vy, self.humans[i].vr = velocities[i]
 
     def _get_reward(self, action, debug=False):
         # collision detection
@@ -1207,111 +1186,11 @@ class CrowdSim(gym.Env):
             info = info_dict
 
         return reward, done, info
-
-    def _get_reward_invisible_robot(self, action):
-        # collision detection
-        dmin = float('inf')
-        collision = False
-        
-        for i, human in enumerate(self.humans):
-            px = human.px - self.robot.px
-            py = human.py - self.robot.py
-
-            if self.robot.kinematics == 'holonomic':
-                vx = human.vx - action.vx
-                vy = human.vy - action.vy
-            else:
-                vx = human.vx - action.v * np.cos(action.r + self.robot.theta)
-                vy = human.vy - action.v * np.sin(action.r + self.robot.theta)
-                
-            ex = px + vx * self.time_step
-            ey = py + vy * self.time_step
-
-            # closest distance between boundaries of two agents
-            closest_dist = point_to_segment_dist(px, py, ex, ey, 0, 0) - human.radius - self.robot.radius
-            
-            if closest_dist < 0:
-                collision = True
-                # logging.debug("Collision: distance between robot and p{} is {:.2E}".format(i, closest_dist))
-                break
-            
-            elif closest_dist < dmin:
-                dmin = closest_dist
-
-        # collision detection between humans
-        human_num = len(self.humans)
-        for i in range(human_num):
-            for j in range(i + 1, human_num):
-                dx = self.humans[i].px - self.humans[j].px
-                dy = self.humans[i].py - self.humans[j].py
-                dist = (dx ** 2 + dy ** 2) ** (1 / 2) - self.humans[i].radius - self.humans[j].radius
-                if dist < 0:
-                    # detect collision but don't take humans' collision into account
-                    logging.debug('Collision happens between humans in step()')
-
-        # Compute the delta between the human states WITHOUT robot action and those with robot action
-        current_positions, current_velocities = self.get_human_states()        
-        #human_state_delta = np.linalg.norm(np.array(current_positions) - np.array(self.human_position_updates_without_robot[0])) + np.linalg.norm(np.array(current_velocities) - np.array(self.human_velocity_updates_without_robot))
-        human_state_delta = np.linalg.norm(np.array(current_velocities) - np.array(self.human_velocity_updates_without_robot))
-
-        #print("DELTA", human_state_delta)
-
-        # check if we have reached the goal
-        end_position = np.array(self.robot.compute_position(action, self.time_step, no_action=True))
-        reaching_goal = norm(end_position - np.array(self.robot.get_goal_position())) < 2.0 * self.robot.radius
-
-        done = False
-        info = dict()
-        
-        reward = 0
-        
-        if self.global_time >= self.time_limit - 1:
-            reward = 0
-            done = True
-            info['status'] = 'timeout'
-        elif collision:
-            reward = self.collision_penalty
-            done = True
-            info['status'] = 'collision'            
-        elif reaching_goal:
-            reward = self.success_reward
-            done = True
-            info['status'] = 'success'
-#        elif velocity_dmin < self.discomfort_dist:
-#            # penalize agent for getting too close
-#            # adjust the reward based on FPS
-#            reward = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
-#            done = False
-#            info['status'] = 'unsafe'
-        else:
-            done = False
-            info['status'] = 'nothing'
-            
-        if not done:
-            reward += -0.001 # slack reward
-            reward += -5.0 * human_state_delta * self.time_step / self.human_num
-            #print(-5.0 * human_state_delta * self.time_step / self.human_num)
-            
-        # Get initial goal potential and collision potential
-        if not done:
-            if self.n_episodes == 1:
-                self.initial_potential = self.get_potential()
-                self.normalized_potential = 1.0
-            
-            # Get delta potential and compute reward
-            current_potential = self.get_potential()
-            new_normalized_potential = current_potential / self.initial_potential
-            potential_reward = self.normalized_potential - new_normalized_potential
-            reward += potential_reward * self.potential_reward_weight
-            self.normalized_potential = new_normalized_potential
-            info['status'] = 'nothing'
-
-        return reward, done, info
     
     def get_potential(self):
         return np.linalg.norm(np.array([self.robot.px, self.robot.py]) - np.array([self.robot.gx, self.robot.gy])) 
 
-    def get_sonar_readings2(self, x, y, angle):
+    def get_sonar_readings_closest_point(self, x, y, angle):
         readings = []
         
         angle += self.angle_offset
@@ -1324,7 +1203,7 @@ class CrowdSim(gym.Env):
         for i in range(self.n_sonar_sensors):
             j = int(self.n_sonar_sensors / 2) - i
             sensor_angle = angle + j * delta_theta
-            readings.append(self.detect_sensor_ping2(x, y, sensor_angle, i))
+            readings.append(self.detect_sensor_ping_xy(x, y, sensor_angle, i))
                                 
         min_distance = np.Inf
         closest_point = None
@@ -1337,7 +1216,7 @@ class CrowdSim(gym.Env):
                                         
         return closest_point
 
-    def detect_sensor_ping2(self, x, y, angle, index):
+    def detect_sensor_ping_xy(self, x, y, angle, index):
         x1 = x + self.max_pygame_sensor_range * np.sqrt(2) * np.cos(angle)
         y1 = y + self.max_pygame_sensor_range * np.sqrt(2) * np.sin(angle)
                 
@@ -1354,6 +1233,8 @@ class CrowdSim(gym.Env):
             if type(seqment_query_info.shape) == pymunk.shapes.Circle:
                 rel_x = x1 - x
                 rel_y = y1 - y
+                ping_x = x
+                ping_y = y
             else:
                 ping_x = seqment_query_info.point.x
                 ping_y = seqment_query_info.point.y
@@ -1363,8 +1244,38 @@ class CrowdSim(gym.Env):
         else:
             rel_x = x1 - x
             rel_y = y1 - y
+            ping_x = x
+            ping_y = y
+            
+        if self.visualize and self.show_sensors:
+            pygame.draw.circle(self.surface, (0, 255, 255, 200), (int(ping_x), self.screen_y(int(ping_y))), 10)
         
         return np.array([rel_x, rel_y])
+    
+    def get_sonar_readings_xy(self, x, y, angle):
+        readings = []
+        
+        angle += self.angle_offset
+                
+        if self.n_sonar_sensors > 1:
+            delta_theta = np.pi / self.n_sonar_sensors
+        else:
+            delta_theta = 0
+        
+        for i in range(self.n_sonar_sensors):
+            j = int(self.n_sonar_sensors / 2) - i
+            sensor_angle = angle + j * delta_theta
+            sensor_point = self.detect_sensor_ping_xy(x, y, sensor_angle, i)
+            readings.append(sensor_point[0])
+            readings.append(sensor_point[1])
+
+        np_readings = np.array(readings, dtype=np.float32)
+
+        np_readings /= (self.square_width * self.scale_factor)
+        
+        #print(list(np_readings))
+                        
+        return np_readings
     
     def get_sonar_readings(self, x, y, angle):
         readings = []

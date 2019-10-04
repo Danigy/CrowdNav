@@ -55,6 +55,7 @@ class JointState(object):
 
         self.self_state = self_state
         self.human_states = human_states
+        #self.obstacles = obstacles
 
 class TensorFlowState(object):
     def __init__(self, self_state, human_states):
