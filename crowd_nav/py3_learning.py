@@ -98,13 +98,13 @@ class SimpleNavigation():
             personal_space_penalty = None          
             slack_reward = None
             energy_cost = None
-            params['nn_layers'] = nn_layers = [256, 128, 64]
+            params['nn_layers'] = nn_layers = [512, 256, 128]
             gamma = 0.99
             decay = 0
             batch_norm = 'no'
-            params['learning_trials'] = learning_trials = 1000000
+            params['learning_trials'] = learning_trials = 2000000
             params['learning_rate'] = learning_rate = 0.0001
-            params['arch'] = 'fixed'
+            params['arch'] = 'unicycle'
 
         # configure policy
         policy = policy_factory[args.policy]()
@@ -373,7 +373,7 @@ if __name__ == '__main__':
     
     class CustomPolicy(FeedForwardPolicy):
         def __init__(self, *args, **kwargs):
-            super(CustomPolicy, self).__init__(*args, layers=[256, 128, 64], layer_norm=False, feature_extraction="mlp", **kwargs)
+            super(CustomPolicy, self).__init__(*args, layers=[512, 256, 128], layer_norm=False, feature_extraction="mlp", **kwargs)
 
     if NN_TUNING:
         param_list = []

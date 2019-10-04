@@ -106,9 +106,9 @@ class ORCA(Policy):
                                   self.max_speed, human_state.velocity)
             
             obstacles = list()
-            obstacles.append([(-1.0, 2.5), (1.0, 2.5), (1.0, 1.5), (-1.0, 1.5)])
+            obstacles.append([(-1.0, 1.5), (1.0, 1.5), (1.0, 0.5), (-1.0, 0.5)])
             obstacles.append([(-3.0, 0.5), (-2.5, 0.5), (-2.5, -0.5), (-3.0, -0.5)])
-            obstacles.append([(4.0, 0.5), (3.5, 0.5), (3.5, 0.0), (4.0, 0.0)])
+            obstacles.append([(4.0, -0.5), (3.5, -0.5), (3.5, -1.5), (4.0, -1.5)])
             
             for obstacle in obstacles:
                 for i in range(len(obstacle) - 1):
