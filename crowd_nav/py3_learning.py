@@ -128,28 +128,28 @@ class SimpleNavigation():
         
         robot = Robot(env_config, 'robot')
         robot.set_policy(policy)
-
-        if args.n_peds:
-            self.human_num = args.n_peds
-        else:
-            self.human_num = env_config.getint('sim', 'human_num')
         
+        if args.n_peds is not None:
+            env_config.set('sim', 'human_num', args.n_peds)
+
+        self.human_num = env_config.getint('sim', 'human_num')
+                
         params['n_peds'] = self.human_num
         
-        if args.n_sonar_sensors:
+        if args.n_sonar_sensors is not None:
             self.n_sonar_sensors = args.n_sonar_sensors
         else:
             self.n_sonar_sensors = env_config.getint('robot', 'n_sonar_sensors')
         
         params['n_sonar_sensors'] = self.n_sonar_sensors
-        
+                
         env = gym.make('CrowdSim-v0', human_num=self.human_num, n_sonar_sensors=self.n_sonar_sensors, success_reward=success_reward, collision_penalty=collision_penalty, time_to_collision_penalty=time_to_collision_penalty,
                        discomfort_dist=discomfort_dist, discomfort_penalty_factor=discomfort_penalty_factor, potential_reward_weight=potential_reward_weight,
                        slack_reward=slack_reward, energy_cost=energy_cost, safe_obstacle_distance=safe_obstacle_distance, safety_penalty_factor=safety_penalty_factor,
                        visualize=visualize, show_sensors=show_sensors, testing=args.test, create_walls=False, create_obstacles=args.create_obstacles)
         
         print("Gym environment created.")
-        
+                
         env.set_robot(robot)
         env.configure(env_config)
         
