@@ -37,7 +37,7 @@ class SimpleNavigation():
         parser.add_argument('-w', '--weights', type=pathstr, required=False, help='Path to weights file')
         parser.add_argument('-d', '--visualize', default=False, action='store_true')
         parser.add_argument('-s', '--show_sensors', default=False, action='store_true')
-        parser.add_argument('-o', '--create_obstacles', default=False, action='store_true')
+        parser.add_argument('-o', '--create_obstacles', default=True, action='store_true')
         parser.add_argument('-n', '--n_sonar_sensors', type=int, required=False)
         parser.add_argument('-p', '--n_peds', type=int, required=False)
         parser.add_argument('--env_config', type=str, default='configs/env.config')
@@ -77,7 +77,7 @@ class SimpleNavigation():
             slack_reward = None
             energy_cost = None
 
-            params['learning_trials'] = learning_trials = 200000
+            params['learning_trials'] = learning_trials = 500000
             params['learning_rate'] = learning_rate = 0.001
             
             #personal_space_cost = 0.0

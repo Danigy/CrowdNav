@@ -107,7 +107,7 @@ class ORCA(Policy):
             
             if include_obstacles:
                 obstacles = list()
-                obstacles.append([(-1.0, 1.5), (1.0, 1.5), (1.0, 0.5), (-1.0, 0.5)])
+                obstacles.append([(-0.5, 1.5), (0.5, 1.5), (0.5, 0.5), (-0.5, 0.5)])
                 obstacles.append([(-3.0, 0.5), (-2.5, 0.5), (-2.5, -0.5), (-3.0, -0.5)])
                 obstacles.append([(4.0, -0.5), (3.5, -0.5), (3.5, -1.5), (4.0, -1.5)])
                 

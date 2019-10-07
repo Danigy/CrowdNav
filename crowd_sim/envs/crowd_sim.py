@@ -111,7 +111,7 @@ class CrowdSim(gym.Env):
         self.scale_factor = 100
         self.angle_offset = 0.0
 
-        self.sensor_range = 10 # meters
+        self.sensor_range = 25 # meters
         self.n_sensor_samples = 40
         self.sensor_gap = 30 # pixels
         self.sensor_spread = 10      # pixels
@@ -284,7 +284,7 @@ class CrowdSim(gym.Env):
         # Create obstacles
         if self.create_obstacles:   
             obstacles = list()         
-            obstacles.append([(-1.0, 1.5), (1.0, 1.5), (1.0, 0.5), (-1.0, 0.5)])
+            obstacles.append([(-0.5, 1.5), (0.5, 1.5), (0.5, 0.5), (-0.5, 0.5)])
             obstacles.append([(-3.0, 0.5), (-2.5, 0.5), (-2.5, -0.5), (-3.0, -0.5)])
             obstacles.append([(4.0, -0.5), (3.5, -0.5), (3.5, -1.5), (4.0, -1.5)])
 
@@ -1280,10 +1280,8 @@ class CrowdSim(gym.Env):
             rel_x = ping_x - x
             rel_y = ping_y - y
         else:
-            #rel_x = x1 - x
-            #rel_y = y1 - y
-            rel_x = 0.0
-            rel_y = -self.max_pygame_sensor_range
+            rel_x = x1 - x
+            rel_y = y1 - y
             ping_x = rel_x
             ping_y = rel_y
             
