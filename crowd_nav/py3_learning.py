@@ -232,7 +232,7 @@ class SimpleNavigation():
         print(">>>>> End testing <<<<<", self.string_to_filename(json.dumps(params)))
         print("Final weights saved at: ", tb_log_dir + "/stable_baselines.pkl")
 
-        print("\nTEST COMMAND:\n\npython3 py3_learning.py --test --weights ", tb_log_dir + "/stable_baselines.zip --visualize")
+        print("\nTEST COMMAND:\n\npython3 py3_learning.py --test --weights ", tb_log_dir + "/stable_baselines.pkl --visualize")
         
         print("\nTESTING for 100 episodes with params:", params, "\n")
 
