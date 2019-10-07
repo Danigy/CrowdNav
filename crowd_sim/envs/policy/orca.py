@@ -79,7 +79,7 @@ class ORCA(Policy):
     def set_phase(self, phase):
         return
 
-    def predict(self, state):
+    def predict(self, state, include_obstacles=False):
         """
         Create a rvo2 simulation at each time step and run one step
         Python-RVO2 API: https://github.com/sybrenstuvel/Python-RVO2/blob/master/src/rvo2.pyx
@@ -105,18 +105,19 @@ class ORCA(Policy):
                 self.sim.addAgent(human_state.position, *params, human_state.radius + 0.01 + human_state.personal_space / 2.0,
                                   self.max_speed, human_state.velocity)
             
-            obstacles = list()
-            obstacles.append([(-1.0, 1.5), (1.0, 1.5), (1.0, 0.5), (-1.0, 0.5)])
-            obstacles.append([(-3.0, 0.5), (-2.5, 0.5), (-2.5, -0.5), (-3.0, -0.5)])
-            obstacles.append([(4.0, -0.5), (3.5, -0.5), (3.5, -1.5), (4.0, -1.5)])
-            
-            for obstacle in obstacles:
-                for i in range(len(obstacle) - 1):
-                    self.sim.addObstacle([obstacle[i], obstacle[i+1]])
-                    
-                self.sim.addObstacle([obstacle[len(obstacle) - 1], obstacle[0]])
-
-            self.sim.processObstacles()
+            if include_obstacles:
+                obstacles = list()
+                obstacles.append([(-1.0, 1.5), (1.0, 1.5), (1.0, 0.5), (-1.0, 0.5)])
+                obstacles.append([(-3.0, 0.5), (-2.5, 0.5), (-2.5, -0.5), (-3.0, -0.5)])
+                obstacles.append([(4.0, -0.5), (3.5, -0.5), (3.5, -1.5), (4.0, -1.5)])
+                
+                for obstacle in obstacles:
+                    for i in range(len(obstacle) - 1):
+                        self.sim.addObstacle([obstacle[i], obstacle[i+1]])
+                        
+                    self.sim.addObstacle([obstacle[len(obstacle) - 1], obstacle[0]])
+    
+                self.sim.processObstacles()
             
         else:
             self.sim.setAgentPosition(0, self_state.position)

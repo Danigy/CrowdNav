@@ -37,11 +37,14 @@ class SimpleNavigation():
         parser.add_argument('-w', '--weights', type=pathstr, required=False, help='Path to weights file')
         parser.add_argument('-d', '--visualize', default=False, action='store_true')
         parser.add_argument('-s', '--show_sensors', default=False, action='store_true')
+        parser.add_argument('-o', '--create_obstacles', default=False, action='store_true')
+        parser.add_argument('-n', '--n_sonar_sensors', type=int, required=False)
+        parser.add_argument('-p', '--n_peds', type=int, required=False)
         parser.add_argument('--env_config', type=str, default='configs/env.config')
         parser.add_argument('--policy', type=str, default='multi_human_rl')
         parser.add_argument('--policy_config', type=str, default='configs/policy.config')
         parser.add_argument('--train_config', type=str, default='configs/train.config')
-        parser.add_argument('-p', '--pre_train', default=False, action='store_true')
+        parser.add_argument('--pre_train', default=False, action='store_true')
         
         args = parser.parse_args()
         #args = vars(parsed_args)
@@ -98,13 +101,13 @@ class SimpleNavigation():
             personal_space_penalty = None          
             slack_reward = None
             energy_cost = None
-            params['nn_layers'] = nn_layers = [512, 256, 128]
+            params['nn_layers'] = nn_layers = [256, 128, 64]
             gamma = 0.99
             decay = 0
             batch_norm = 'no'
-            params['learning_trials'] = learning_trials = 2000000
-            params['learning_rate'] = learning_rate = 0.0001
-            params['arch'] = 'unicycle'
+            params['learning_trials'] = learning_trials = 500000
+            params['learning_rate'] = learning_rate = 0.001
+            params['arch'] = 'xy'
 
         # configure policy
         policy = policy_factory[args.policy]()
@@ -123,40 +126,51 @@ class SimpleNavigation():
         visualize = True if args.visualize else None
         show_sensors = True if args.show_sensors else None
         
-        env = gym.make('CrowdSim-v0', success_reward=success_reward, collision_penalty=collision_penalty, time_to_collision_penalty=time_to_collision_penalty,
+        robot = Robot(env_config, 'robot')
+        robot.set_policy(policy)
+
+        if args.n_peds:
+            self.human_num = args.n_peds
+        else:
+            self.human_num = env_config.getint('sim', 'human_num')
+        
+        params['n_peds'] = self.human_num
+        
+        if args.n_sonar_sensors:
+            self.n_sonar_sensors = args.n_sonar_sensors
+        else:
+            self.n_sonar_sensors = env_config.getint('robot', 'n_sonar_sensors')
+        
+        params['n_sonar_sensors'] = self.n_sonar_sensors
+        
+        env = gym.make('CrowdSim-v0', human_num=self.human_num, n_sonar_sensors=self.n_sonar_sensors, success_reward=success_reward, collision_penalty=collision_penalty, time_to_collision_penalty=time_to_collision_penalty,
                        discomfort_dist=discomfort_dist, discomfort_penalty_factor=discomfort_penalty_factor, potential_reward_weight=potential_reward_weight,
                        slack_reward=slack_reward, energy_cost=energy_cost, safe_obstacle_distance=safe_obstacle_distance, safety_penalty_factor=safety_penalty_factor,
-                       visualize=visualize, show_sensors=show_sensors, testing=args.test, create_walls=False, create_obstacles=True)
+                       visualize=visualize, show_sensors=show_sensors, testing=args.test, create_walls=False, create_obstacles=args.create_obstacles)
         
         print("Gym environment created.")
         
-        env.seed()
-        np.random.seed()
-        
-        robot = Robot(env_config, 'robot')
-        robot.set_policy(policy)
-        
         env.set_robot(robot)
         env.configure(env_config)
-
-        self.human_num = env_config.getint('sim', 'human_num')
-        params['n_sonar_sensors'] = env_config.getint('robot', 'n_sonar_sensors')
+        
+        env.seed()
+        np.random.seed()
      
         env = DummyVecEnv([lambda: env])
 
         if TUNING or NN_TUNING:
             if args.pre_train:
-                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_pretrain_n_peds_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))
+                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_pretrain_' + self.string_to_filename(json.dumps(params))
             else:
-                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_n_peds_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))
+                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_' + self.string_to_filename(json.dumps(params))
 
             save_weights_file = tb_log_dir + '/sac_' + ENV_NAME + '_weights_' + self.string_to_filename(json.dumps(params)) +'.h5f'
 
         else:
             if args.pre_train:
-                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_pretrain_n_peds_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))
+                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_pretrain_' + self.string_to_filename(json.dumps(params))
             else:
-                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_n_peds_' + str(self.human_num) + "_" + self.string_to_filename(json.dumps(params))
+                tb_log_dir = os.path.expanduser('~') + '/tensorboard_logs/sac_' + self.string_to_filename(json.dumps(params))
 
             save_weights_file = tb_log_dir + '/sac' + ENV_NAME + '_weights_final' + '.h5f'
 
@@ -373,7 +387,7 @@ if __name__ == '__main__':
     
     class CustomPolicy(FeedForwardPolicy):
         def __init__(self, *args, **kwargs):
-            super(CustomPolicy, self).__init__(*args, layers=[512, 256, 128], layer_norm=False, feature_extraction="mlp", **kwargs)
+            super(CustomPolicy, self).__init__(*args, layers=[256, 128, 64], layer_norm=False, feature_extraction="mlp", **kwargs)
 
     if NN_TUNING:
         param_list = []

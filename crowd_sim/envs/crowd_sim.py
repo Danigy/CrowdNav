@@ -45,7 +45,7 @@ atexit.register(pygame.display.quit)
 class CrowdSim(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, success_reward=None, collision_penalty=None, time_to_collision_penalty=None, discomfort_dist=None,
+    def __init__(self, human_num=None, n_sonar_sensors=None, success_reward=None, collision_penalty=None, time_to_collision_penalty=None, discomfort_dist=None,
                        discomfort_penalty_factor=None, potential_reward_weight=None, slack_reward=None,
                        energy_cost=None, safe_obstacle_distance=None, safety_penalty_factor=None, visualize=None,
                        show_sensors=None, expert_policy=False, testing=False, create_walls=False, create_obstacles=False):
@@ -85,7 +85,8 @@ class CrowdSim(gym.Env):
         self.test_sim = None
         self.square_width = None
         self.circle_radius = None
-        self.human_num = None
+        self.human_num = human_num or None
+        self.n_sonar_sensors = n_sonar_sensors or None
         # for visualization
         self.states = None
         self.action_values = None
@@ -135,11 +136,11 @@ class CrowdSim(gym.Env):
         self.robot_body.angle = r
         self.robot_shape = pymunk.Circle(self.robot_body, robot_radius)
         self.robot_shape.color = THECOLORS["white"]
-        self.robot_shape.group = 2
-        robot_filter = pymunk.ShapeFilter(categories=2)
-        self.robot_shape.filter = robot_filter
         self.robot_shape.elasticity = 1.0
         self.robot_shape.collision_type = 1
+        self.robot_shape.group = 1
+        robot_filter = pymunk.ShapeFilter(categories=1)
+        self.robot_shape.filter = robot_filter
         collison_pedestrian = self.space.add_collision_handler(1, 2)
         collison_object = self.space.add_collision_handler(1, 3)
         collison_pedestrian.begin = self.collision_pedestrian_begin
@@ -155,6 +156,9 @@ class CrowdSim(gym.Env):
         ped_shape = pymunk.Circle(ped_body, r)
         ped_shape.elasticity = 1.0
         ped_shape.collision_type = 2
+        ped_shape.group = 2
+        ped_filter = pymunk.ShapeFilter(categories=2)
+        ped_shape.filter = ped_filter
         ped_body.position = x, y
         ped_body.velocity = Vec2d(0, 0)
         ped_shape.color = THECOLORS["orange"]
@@ -170,8 +174,6 @@ class CrowdSim(gym.Env):
             vertices[i][1] = vertices[i][1] * self.scale_factor + self.height/2.0
 
         pymunk_obstacle = pymunk.Poly(self.space.static_body, vertices)
-
-        pymunk_obstacle.group = 1
         
         return pymunk_obstacle
 
@@ -204,7 +206,7 @@ class CrowdSim(gym.Env):
         self.visualize = self.visualize or config.getboolean('env', 'visualize')
         self.show_sensors = self.show_sensors or config.getboolean('env', 'show_sensors')
         self.display_fps = config.getfloat('env', 'display_fps')
-        self.n_sonar_sensors = config.getint('robot', 'n_sonar_sensors')
+        self.n_sonar_sensors =self.n_sonar_sensors or config.getint('robot', 'n_sonar_sensors')
 
         if self.config.get('humans', 'policy') == 'orca':
             self.case_capacity = {'train': np.iinfo(np.uint32).max - 2000, 'val': 1000, 'test': 1000}
@@ -215,7 +217,7 @@ class CrowdSim(gym.Env):
             self.square_width = config.getfloat('sim', 'square_width')
             self.circle_radius = config.getfloat('sim', 'circle_radius')
             self.hallway_width = config.getfloat('sim', 'hallway_width')
-            self.human_num = config.getint('sim', 'human_num')
+            self.human_num = self.human_num or config.getint('sim', 'human_num')
         else:
             raise NotImplementedError
         self.case_counter = {'train': 0, 'test': 0, 'val': 0}
@@ -278,10 +280,8 @@ class CrowdSim(gym.Env):
                 #                 self.space.static_body,
                 #                 (self.width/2, self.height/2), (self.width/2, 1), 2)
             ]
-
         
         # Create obstacles
-        self.create_obstacles = True
         if self.create_obstacles:   
             obstacles = list()         
             obstacles.append([(-1.0, 1.5), (1.0, 1.5), (1.0, 0.5), (-1.0, 0.5)])
@@ -295,18 +295,18 @@ class CrowdSim(gym.Env):
 
         for s in self.static:
             s.friction = 1.
-            s.group = 1
-            obstacle_filter = pymunk.ShapeFilter(categories=1)
+            obstacle_filter = pymunk.ShapeFilter(categories=3)
             s.filter = obstacle_filter
             s.collision_type = 3
+            s.group = 3
             s.color = THECOLORS["red"]
             self.obstacles.append(s)
              
         self.space.add(self.static)
 
         self.action_space = spaces.Box(-1.0, 1.0, shape=[2,])
-        self.observation_space = spaces.Box(-1.0, 1.0, shape=[self.n_sonar_sensors + 2 + 5 * self.human_num,])
-        #self.observation_space = spaces.Box(-1.0, 1.0, shape=[8 + 2 + 5 * self.human_num,])
+        #self.observation_space = spaces.Box(-1.0, 1.0, shape=[self.n_sonar_sensors + 2 + 2 + 5 * self.human_num,])
+        self.observation_space = spaces.Box(-1.0, 1.0, shape=[self.n_sonar_sensors * 2  + 2 + 5 * self.human_num,])
 
     def set_robot(self, robot):
         self.robot = robot
@@ -533,16 +533,38 @@ class CrowdSim(gym.Env):
         x, y = self.robot_body.position
                 
         state = []
-        
+        self.sensor_readings = []
+
         if self.n_sonar_sensors > 0:
-            #state = [-0.5-self.robot.px, -0.5-self.robot.py, -0.5-self.robot.px, 0.5-self.robot.py, 0.5-self.robot.px, 0.5-self.robot.py, 0.5-self.robot.px, -0.5-self.robot.py]
-            #state = list(self.get_sonar_readings_xy(x, y, self.robot_body.angle))
-            state = list(self.get_sonar_readings(x, y, self.robot_body.angle))
+            state = list(self.get_sonar_readings_xy(x, y, self.robot_body.angle))
             self.sensor_readings = deepcopy(state)
+            
+#             state_xy = list(self.get_sonar_readings_xy(x, y, self.robot_body.angle))
+#             
+#             for [px, py] in state_xy:
+#                 if self.robot.vx * px + self.robot.vy * py == 0:
+#                     time_to_collision = -1.0
+#                     
+#                 time_to_collision = (px**2 + py**2) / (self.robot.vx * px + self.robot.vy * py)
+#                 
+#                 if time_to_collision < 0:
+#                     time_to_collision = -1.0
+#                 else:
+#                     time_to_collision = 1.0 - np.tanh(time_to_collision / 10.0)
+#                     
+#                 state.append(px)
+#                 state.append(py)
+#                 state.append(time_to_collision)
+#                 self.sensor_readings.append(np.sqrt(px**2 + py**2))
         
-        #print("RAW:", state_raw)
-        #print("STATE", state)
-        
+#         if self.robot.kinematics == 'holonomic':
+#             state.append(self.robot.vx / self.robot.max_linear_velocity / self.sqrt_2)
+#             state.append(self.robot.vy / self.robot.max_linear_velocity / self.sqrt_2)
+#         else:
+#             self.robot.v = np.sqrt(self.robot.vx**2 + self.robot.vy**2)
+#             state.append(self.robot.v / self.robot.max_linear_velocity)
+#             state.append(self.robot.vr / self.robot.max_angular_velocity)
+                   
         if self.robot.kinematics == 'holonomic':
             gx = self.robot.gx - self.robot.px
             gy = self.robot.gy - self.robot.py
@@ -817,7 +839,7 @@ class CrowdSim(gym.Env):
             if np.random.random() > 0.5:
                 sign = -1
             else:
-                sign = 1           
+                sign = 1
             
             py = -self.square_width * 0.35
             
@@ -912,7 +934,7 @@ class CrowdSim(gym.Env):
             if self.robot.visible:
                 ob += [self.robot.get_observable_state()]
                 
-            human_actions.append(human.act(ob))
+            human_actions.append(human.act(ob, include_obstacles=self.create_obstacles))
 
         # Move humans and robot according to current observation and action
         if update:            
@@ -1128,22 +1150,37 @@ class CrowdSim(gym.Env):
             # energy cost
             reward += self.energy_cost * np.linalg.norm(np.array([self.robot.vx, self.robot.vy])) * self.time_step
 
-            # safety factor
+            # X-Y safety factor
             if self.n_sonar_sensors > 0:
-                #min_obstacle_distance = np.linalg.norm(self.closest_point)
                 sensor_readings = np.array(self.sensor_readings)
-                try:
-                    min_obstacle_distance = min(sensor_readings[np.where(sensor_readings >= 0)])
-                    min_obstacle_distance *= self.max_pygame_sensor_range / self.scale_factor
-                except:
-                    min_obstacle_distance = np.Inf
-                
+                sensor_readings = np.reshape(sensor_readings, (int(len(sensor_readings)/2), 2))                                             
+   
+                min_obstacle_distance = np.min(np.linalg.norm(sensor_readings, axis=1))
+                min_obstacle_distance *= self.max_pygame_sensor_range / self.scale_factor
+                   
                 if min_obstacle_distance < self.safe_obstacle_distance:
                     obstacle_cost = (min_obstacle_distance - self.safe_obstacle_distance) * self.safety_penalty_factor * self.time_step
                 else:
                     obstacle_cost = 0.0
-                
+                   
                 reward += obstacle_cost
+                
+#             # Distance safety factor
+#             if self.n_sonar_sensors > 0:
+#                 #min_obstacle_distance = np.linalg.norm(self.closest_point)
+#                 sensor_readings = np.array(self.sensor_readings)
+#                 try:
+#                     min_obstacle_distance = min(sensor_readings[np.where(sensor_readings >= 0)])
+#                     min_obstacle_distance *= self.max_pygame_sensor_range / self.scale_factor
+#                 except:
+#                     min_obstacle_distance = np.Inf
+#                   
+#                 if min_obstacle_distance < self.safe_obstacle_distance:
+#                     obstacle_cost = (min_obstacle_distance - self.safe_obstacle_distance) * self.safety_penalty_factor * self.time_step
+#                 else:
+#                     obstacle_cost = 0.0
+#                   
+#                 reward += obstacle_cost
 
             # Get initial goal potential and collision potential
             if self.n_steps == 1:
@@ -1216,7 +1253,7 @@ class CrowdSim(gym.Env):
                                         
         return closest_point
 
-    def detect_sensor_ping_xy(self, x, y, angle, index):
+    def detect_sensor_ping_xy(self, x, y, angle, index):        
         x1 = x + self.max_pygame_sensor_range * np.sqrt(2) * np.cos(angle)
         y1 = y + self.max_pygame_sensor_range * np.sqrt(2) * np.sin(angle)
                 
@@ -1226,37 +1263,64 @@ class CrowdSim(gym.Env):
             else:
                 pygame.draw.lines(self.surface, (255, 255, 0), False, [Vec2d(x,self.screen_y(y)), Vec2d(x1, self.screen_y(y1))], 1)
 
-        robot_filter = pymunk.ShapeFilter(mask=(pymunk.ShapeFilter.ALL_MASKS ^ 2 or pymunk.ShapeFilter.ALL_MASKS ^ 1))
+        robot_filter = pymunk.ShapeFilter(mask=(pymunk.ShapeFilter.ALL_MASKS ^ 1))
         seqment_query_info = self.space.segment_query_first(Vec2d(x, y), Vec2d(x1, y1), 0, shape_filter=robot_filter)
 
         if seqment_query_info is not None:
-            if type(seqment_query_info.shape) == pymunk.shapes.Circle:
-                rel_x = x1 - x
-                rel_y = y1 - y
-                ping_x = x
-                ping_y = y
-            else:
-                ping_x = seqment_query_info.point.x
-                ping_y = seqment_query_info.point.y
+#             # circles are pedestrians
+#             if type(seqment_query_info.shape) == pymunk.shapes.Circle:
+#                 rel_x = x1 - x
+#                 rel_y = y1 - y
+#                 ping_x = x
+#                 ping_y = y
+#             else:
+            ping_x = seqment_query_info.point.x
+            ping_y = seqment_query_info.point.y
 
-                rel_x = ping_x - x
-                rel_y = ping_y - y
+            rel_x = ping_x - x
+            rel_y = ping_y - y
         else:
-            rel_x = x1 - x
-            rel_y = y1 - y
-            ping_x = x
-            ping_y = y
+            #rel_x = x1 - x
+            #rel_y = y1 - y
+            rel_x = 0.0
+            rel_y = -self.max_pygame_sensor_range
+            ping_x = rel_x
+            ping_y = rel_y
             
         if self.visualize and self.show_sensors:
             pygame.draw.circle(self.surface, (0, 255, 255, 200), (int(ping_x), self.screen_y(int(ping_y))), 10)
         
         return np.array([rel_x, rel_y])
     
+#     def get_sonar_readings_xy(self, x, y, angle):
+#         readings = []
+#         
+#         angle += self.angle_offset
+#                 
+#         if self.n_sonar_sensors > 1:
+#             delta_theta = np.pi / self.n_sonar_sensors
+#         else:
+#             delta_theta = 0
+#         
+#         for i in range(self.n_sonar_sensors):
+#             j = int(self.n_sonar_sensors / 2) - i
+#             sensor_angle = angle + j * delta_theta
+#             sensor_point = self.detect_sensor_ping_xy(x, y, sensor_angle, i)
+#             readings.append(sensor_point)
+# 
+#         np_readings = np.array(readings, dtype=np.float32)
+# 
+#         np_readings /= (self.square_width * self.scale_factor)
+#         
+#         #print(list(np_readings))
+#                         
+#         return np_readings
+    
     def get_sonar_readings_xy(self, x, y, angle):
         readings = []
         
         angle += self.angle_offset
-                
+                        
         if self.n_sonar_sensors > 1:
             delta_theta = np.pi / self.n_sonar_sensors
         else:
@@ -1268,7 +1332,7 @@ class CrowdSim(gym.Env):
             sensor_point = self.detect_sensor_ping_xy(x, y, sensor_angle, i)
             readings.append(sensor_point[0])
             readings.append(sensor_point[1])
-
+            
         np_readings = np.array(readings, dtype=np.float32)
 
         np_readings /= (self.square_width * self.scale_factor)
@@ -1310,7 +1374,7 @@ class CrowdSim(gym.Env):
             else:
                 pygame.draw.lines(self.surface, (255, 255, 0), False, [Vec2d(x,self.screen_y(y)), Vec2d(x1, self.screen_y(y1))], 1)
 
-        robot_filter = pymunk.ShapeFilter(mask=(pymunk.ShapeFilter.ALL_MASKS ^ 2))
+        robot_filter = pymunk.ShapeFilter(mask=(pymunk.ShapeFilter.ALL_MASKS ^ 1))
         seqment_query_info = self.space.segment_query_first(Vec2d(x,y), Vec2d(x1, y1), 0, shape_filter=robot_filter)
 
         if seqment_query_info is not None:
