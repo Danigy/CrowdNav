@@ -9,6 +9,7 @@ import tensorflow as tf
 
 from stable_baselines.common.vec_env import DummyVecEnv
 from stable_baselines.sac.policies import MlpPolicy, FeedForwardPolicy, CnnPolicy
+from stable_baselines.ppo2 import PPO2
 from stable_baselines.common.policies import MlpLstmPolicy, ActorCriticPolicy, register_policy, mlp_extractor
 
 from stable_baselines import SAC, PPO2
@@ -37,7 +38,7 @@ class SimpleNavigation():
         parser.add_argument('-w', '--weights', type=pathstr, required=False, help='Path to weights file')
         parser.add_argument('-d', '--visualize', default=False, action='store_true')
         parser.add_argument('-s', '--show_sensors', default=False, action='store_true')
-        parser.add_argument('-o', '--create_obstacles', default=True, action='store_true')
+        parser.add_argument('-o', '--create_obstacles',type=str2bool, default=True, required=False)
         parser.add_argument('-n', '--n_sonar_sensors', type=int, required=False)
         parser.add_argument('-p', '--n_peds', type=int, required=False)
         parser.add_argument('--env_config', type=str, default='configs/env.config')
@@ -77,14 +78,14 @@ class SimpleNavigation():
             slack_reward = None
             energy_cost = None
 
-            params['learning_trials'] = learning_trials = 500000
-            params['learning_rate'] = learning_rate = 0.001
+            params['learning_trials'] = learning_trials = 1500000
+            params['learning_rate'] = learning_rate = 0.0005
             
             #personal_space_cost = 0.0
             #slack_reward = -0.01
             #learning_rate = 0.001
             if not NN_TUNING:
-                nn_layers = [256, 128, 64]
+                nn_layers = [256, 128, 64, 32]
                 gamma = 0.99
                 decay = 0
                 batch_norm = 'no'
@@ -101,13 +102,13 @@ class SimpleNavigation():
             personal_space_penalty = None          
             slack_reward = None
             energy_cost = None
-            params['nn_layers'] = nn_layers = [256, 128, 64]
+            params['nn_layers'] = nn_layers = [256, 128, 64, 32]
             gamma = 0.99
             decay = 0
             batch_norm = 'no'
-            params['learning_trials'] = learning_trials = 500000
-            params['learning_rate'] = learning_rate = 0.001
-            params['arch'] = 'xy'
+            params['learning_trials'] = learning_trials = 1500000
+            params['learning_rate'] = learning_rate = 0.0005
+            params['arch'] = 'test_many_episodes'
 
         # configure policy
         policy = policy_factory[args.policy]()
@@ -177,7 +178,8 @@ class SimpleNavigation():
         weights_path = os.path.join(tb_log_dir, "model_weights.{epoch:02d}.h5")
  
         model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate, buffer_size=100000)
-            
+        #model = PPO2(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate, buffer_size=100000)
+
 #         policy_kwargs = {
 #             "mlp_extractor": self.custom_feature_extractor
 #         }
@@ -230,9 +232,9 @@ class SimpleNavigation():
         model.learn(total_timesteps=learning_trials, log_interval=10)
         model.save(tb_log_dir + "/stable_baselines")
         print(">>>>> End testing <<<<<", self.string_to_filename(json.dumps(params)))
-        print("Final weights saved at: ", tb_log_dir + "/stable_baselines.pkl")
+        print("Final weights saved at: ", tb_log_dir + "/stable_baselines.zip")
 
-        print("\nTEST COMMAND:\n\npython3 py3_learning.py --test --weights ", tb_log_dir + "/stable_baselines.pkl --visualize")
+        print("\nTEST COMMAND:\n\npython3 py3_learning.py --test --weights ", tb_log_dir + "/stable_baselines.zip --visualize")
         
         print("\nTESTING for 100 episodes with params:", params, "\n")
 
@@ -353,6 +355,16 @@ def launch_learn(params):
 if __name__ == '__main__':
     def pathstr(v): return os.path.abspath(v)
     
+    def str2bool(v):
+        if isinstance(v, bool):
+           return v
+        if v.lower() in ('yes', 'true', 't', 'y', '1'):
+            return True
+        elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+            return False
+        else:
+            raise argparse.ArgumentTypeError('Boolean value expected.')
+    
     def trunc(f, n):
         # Truncates/pads a float f to n decimal places without rounding
         slen = len('%.*f' % (n, f))
@@ -387,12 +399,12 @@ if __name__ == '__main__':
     
     class CustomPolicy(FeedForwardPolicy):
         def __init__(self, *args, **kwargs):
-            super(CustomPolicy, self).__init__(*args, layers=[256, 128, 64], layer_norm=False, feature_extraction="mlp", **kwargs)
+            super(CustomPolicy, self).__init__(*args, layers=[256, 128, 64, 32], layer_norm=False, feature_extraction="mlp", **kwargs)
 
     if NN_TUNING:
         param_list = []
     
-        nn_architectures = [[64, 64], [512, 256, 128], [256, 128, 64]]
+        nn_architectures = [[64, 64], [512, 256, 128, 64], [256, 128, 64, 32]]
         #nn_architectures = [[64, 64, 64], [1024, 512, 256], [512, 256, 128, 64]]
         gammas = [0.99, 0.95]
         #decays = [0.0]
