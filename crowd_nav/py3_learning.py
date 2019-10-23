@@ -38,7 +38,8 @@ class SimpleNavigation():
         parser.add_argument('-w', '--weights', type=pathstr, required=False, help='Path to weights file')
         parser.add_argument('-d', '--visualize', default=False, action='store_true')
         parser.add_argument('-s', '--show_sensors', default=False, action='store_true')
-        parser.add_argument('-o', '--create_obstacles',type=str2bool, default=True, required=False)
+        parser.add_argument('-o', '--create_obstacles', type=str2bool, default=False, required=False)
+        parser.add_argument('--create_walls', type=str2bool, default=False, required=False)
         parser.add_argument('-n', '--n_sonar_sensors', type=int, required=False)
         parser.add_argument('-p', '--n_peds', type=int, required=False)
         parser.add_argument('--env_config', type=str, default='configs/env.config')
@@ -106,8 +107,8 @@ class SimpleNavigation():
             gamma = 0.99
             decay = 0
             batch_norm = 'no'
-            params['learning_trials'] = learning_trials = 1500000
-            params['learning_rate'] = learning_rate = 0.0005
+            params['learning_trials'] = learning_trials = 500000
+            params['learning_rate'] = learning_rate = 0.001
             params['arch'] = 'test_many_episodes'
 
         # configure policy
@@ -147,7 +148,7 @@ class SimpleNavigation():
         env = gym.make('CrowdSim-v0', human_num=self.human_num, n_sonar_sensors=self.n_sonar_sensors, success_reward=success_reward, collision_penalty=collision_penalty, time_to_collision_penalty=time_to_collision_penalty,
                        discomfort_dist=discomfort_dist, discomfort_penalty_factor=discomfort_penalty_factor, potential_reward_weight=potential_reward_weight,
                        slack_reward=slack_reward, energy_cost=energy_cost, safe_obstacle_distance=safe_obstacle_distance, safety_penalty_factor=safety_penalty_factor,
-                       visualize=visualize, show_sensors=show_sensors, testing=args.test, create_walls=False, create_obstacles=args.create_obstacles)
+                       visualize=visualize, show_sensors=show_sensors, testing=args.test, create_obstacles=args.create_obstacles, create_walls=args.create_walls)
         
         print("Gym environment created.")
                 

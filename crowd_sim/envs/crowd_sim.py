@@ -261,21 +261,46 @@ class CrowdSim(gym.Env):
         
         self.obstacles = []
         
+#         # Create walls.
+#         if self.create_walls:
+#             self.static = [
+#                 pymunk.Segment(
+#                     self.space.static_body,
+#                     (0, 0.1 * self.height), (0, 0.9 * self.height), 3),
+#                 pymunk.Segment(
+#                     self.space.static_body,
+#                     (0.1 * self.width, self.height), (0.9 * self.width, self.height), 3),
+#                 pymunk.Segment(
+#                     self.space.static_body,
+#                     (0.9 * self.width, 0.9 * self.height), (0.9 * self.width, 0.1 * self.height), 3),
+#                 pymunk.Segment(
+#                     self.space.static_body,
+#                     (0.1 * self.width, 0.1 * self.height), (0.9 * self.width, 0.9 * self.height), 3)
+#                 #             pymunk.Segment(
+#                 #                 self.space.static_body,
+#                 #                 (self.width/2, self.height/2), (self.width/2, 1), 2)
+#             ]
+            
         # Create walls.
+        wall_width_start = 0.01 * self.width
+        wall_width_end = 0.99 * self.width
+        wall_height_start = 0.01 * self.height
+        wall_height_end = 0.99 * self.height
+        
         if self.create_walls:
             self.static = [
                 pymunk.Segment(
                     self.space.static_body,
-                    (0, 1), (0, self.height), 3),
+                    (wall_width_start, wall_height_start), (wall_width_end, wall_height_start), 3),
                 pymunk.Segment(
                     self.space.static_body,
-                    (1, self.height), (self.width, self.height), 3),
+                    (wall_width_start, wall_height_start), (wall_width_start, wall_height_end), 3),
                 pymunk.Segment(
                     self.space.static_body,
-                    (self.width-1, self.height), (self.width-1, 1), 3),
+                    (wall_width_start, wall_height_end), (wall_width_end, wall_height_end), 3),
                 pymunk.Segment(
                     self.space.static_body,
-                    (1, 1), (self.width, 1), 3)
+                    (wall_width_end, wall_height_start), (wall_width_end, wall_height_end), 3)
                 #             pymunk.Segment(
                 #                 self.space.static_body,
                 #                 (self.width/2, self.height/2), (self.width/2, 1), 2)
@@ -922,13 +947,15 @@ class CrowdSim(gym.Env):
                         vertex[1] = self.screen_y(vertex[1])
                         screen_vertices.append(vertex)
                     pygame.draw.polygon(self.surface, (255, 0, 0, 100), screen_vertices)
+                elif type(obstacle) == pymunk.shapes.Segment:
+                    pygame.draw.line(self.surface, (255, 0, 0, 100), obstacle.a, obstacle.b, 3)
             
             self.space.debug_draw(self.draw_options)
             self.screen.blit(self.surface, (0, 0))
             pygame.display.flip()
-            self.screen.fill(THECOLORS["black"])
             self.surface.fill(THECOLORS["black"])
-            
+            self.screen.fill(THECOLORS["black"])
+
             self.clock.tick(self.display_fps)
         if debug or self.expert_policy:
             return state, ob, reward, done, info
@@ -1258,6 +1285,8 @@ class CrowdSim(gym.Env):
             ping_x = seqment_query_info.point.x
             ping_y = seqment_query_info.point.y
             distance = np.linalg.norm((ping_x - x, ping_y - y))
+            if self.visualize and self.show_sensors:
+                pygame.draw.circle(self.surface, (0, 255, 255, 200), (int(ping_x), self.screen_y(int(ping_y))), 10)
         else:
             distance = self.square_width * self.scale_factor
         

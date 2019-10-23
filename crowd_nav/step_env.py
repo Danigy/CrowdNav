@@ -21,6 +21,8 @@ def main():
     parser.add_argument('--gpu', default=False, action='store_true')
     parser.add_argument('--visualize', default=True, action='store_true')
     parser.add_argument('--show_sensors', default=True, action='store_true')
+    parser.add_argument('-o', '--create_obstacles',type=str2bool, default=False, required=False)
+    parser.add_argument('-w', '--create_walls',type=str2bool, default=False, required=False)
     parser.add_argument('--phase', type=str, default='test')
     parser.add_argument('--test_case', type=int, default=None)
     parser.add_argument('--square', default=False, action='store_true')
@@ -66,7 +68,7 @@ def main():
     
     env = gym.make('CrowdSim-v0', success_reward=None, collision_penalty=None, time_to_collision_penalty=None, discomfort_dist=None,
                        discomfort_penalty_factor=None, potential_reward_weight=None, slack_reward=None, energy_cost=None,
-                       visualize=args.visualize, show_sensors=args.show_sensors, create_walls=False, create_obstacles=True)
+                       visualize=args.visualize, show_sensors=args.show_sensors, create_walls=args.create_walls, create_obstacles=args.create_obstacles)
 
     print("Gym environment created.")
     
@@ -164,4 +166,16 @@ def main():
 
 
 if __name__ == '__main__':
+    def pathstr(v): return os.path.abspath(v)
+    
+    def str2bool(v):
+        if isinstance(v, bool):
+           return v
+        if v.lower() in ('yes', 'true', 't', 'y', '1'):
+            return True
+        elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+            return False
+        else:
+            raise argparse.ArgumentTypeError('Boolean value expected.')
+        
     main()
