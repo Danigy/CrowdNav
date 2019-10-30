@@ -109,9 +109,9 @@ class SimpleNavigation():
             gamma = 0.99
             decay = 0
             batch_norm = 'no'
-            params['learning_trials'] = learning_trials = 500000
-            params['learning_rate'] = learning_rate = 0.0005
-            params['arch'] = 'position_+_velocity_+_discomfort_+_ttc'
+            params['learning_trials'] = learning_trials = 1500000
+            params['learning_rate'] = learning_rate = 0.0003
+            params['arch'] = 'standard_ped_state'
 
         # configure policy
         policy = policy_factory[args.policy]()
