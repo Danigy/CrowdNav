@@ -47,6 +47,8 @@ class SimpleNavigation():
         parser.add_argument('--policy_config', type=str, default='configs/policy.config')
         parser.add_argument('--train_config', type=str, default='configs/train.config')
         parser.add_argument('--pre_train', default=False, action='store_true')
+        parser.add_argument('--display_fps', type=int, required=False, default=1000)
+
         
         args = parser.parse_args()
         #args = vars(parsed_args)
@@ -108,8 +110,8 @@ class SimpleNavigation():
             decay = 0
             batch_norm = 'no'
             params['learning_trials'] = learning_trials = 500000
-            params['learning_rate'] = learning_rate = 0.001
-            params['arch'] = 'test_many_episodes'
+            params['learning_rate'] = learning_rate = 0.0005
+            params['arch'] = 'position_+_velocity_+_discomfort_+_ttc'
 
         # configure policy
         policy = policy_factory[args.policy]()
@@ -148,7 +150,7 @@ class SimpleNavigation():
         env = gym.make('CrowdSim-v0', human_num=self.human_num, n_sonar_sensors=self.n_sonar_sensors, success_reward=success_reward, collision_penalty=collision_penalty, time_to_collision_penalty=time_to_collision_penalty,
                        discomfort_dist=discomfort_dist, discomfort_penalty_factor=discomfort_penalty_factor, potential_reward_weight=potential_reward_weight,
                        slack_reward=slack_reward, energy_cost=energy_cost, safe_obstacle_distance=safe_obstacle_distance, safety_penalty_factor=safety_penalty_factor,
-                       visualize=visualize, show_sensors=show_sensors, testing=args.test, create_obstacles=args.create_obstacles, create_walls=args.create_walls)
+                       visualize=visualize, show_sensors=show_sensors, testing=args.test, create_obstacles=args.create_obstacles, create_walls=args.create_walls, display_fps=args.display_fps)
         
         print("Gym environment created.")
                 
@@ -178,7 +180,7 @@ class SimpleNavigation():
 
         weights_path = os.path.join(tb_log_dir, "model_weights.{epoch:02d}.h5")
  
-        model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate, buffer_size=100000)
+        model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate, buffer_size=50000)
         #model = PPO2(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate, buffer_size=100000)
 
 #         policy_kwargs = {

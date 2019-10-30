@@ -48,7 +48,7 @@ class CrowdSim(gym.Env):
     def __init__(self, human_num=None, n_sonar_sensors=None, success_reward=None, collision_penalty=None, time_to_collision_penalty=None, discomfort_dist=None,
                        discomfort_penalty_factor=None, potential_reward_weight=None, slack_reward=None,
                        energy_cost=None, safe_obstacle_distance=None, safety_penalty_factor=None, visualize=None,
-                       show_sensors=None, expert_policy=False, testing=False, create_walls=False, create_obstacles=False):
+                       show_sensors=None, expert_policy=False, testing=False, create_walls=False, create_obstacles=False, display_fps=1000):
         """
         Movement simulation for n+1 agents
         Agent can either be human or robot.
@@ -74,7 +74,7 @@ class CrowdSim(gym.Env):
         self.safe_obstacle_distance = safe_obstacle_distance or None
         self.safety_penalty_factor = safety_penalty_factor or None        
 
-        self.lookahead_interval = 2.0
+        self.lookahead_interval = 3.0
         # simulation configuration
         self.config = None
         self.case_capacity = None
@@ -123,6 +123,7 @@ class CrowdSim(gym.Env):
         self.testing = testing
         self.create_walls = create_walls
         self.create_obstacles = create_obstacles
+        self.display_fps = display_fps
 
         self.static = list()
                 
@@ -205,7 +206,7 @@ class CrowdSim(gym.Env):
         self.lookahead_interval = config.getfloat('reward', 'lookahead_interval')        
         self.visualize = self.visualize or config.getboolean('env', 'visualize')
         self.show_sensors = self.show_sensors or config.getboolean('env', 'show_sensors')
-        self.display_fps = config.getfloat('env', 'display_fps')
+        self.display_fps = self.display_fps or config.getfloat('env', 'display_fps')
         self.n_sonar_sensors =self.n_sonar_sensors or config.getint('robot', 'n_sonar_sensors')
 
         if self.config.get('humans', 'policy') == 'orca':
@@ -485,9 +486,11 @@ class CrowdSim(gym.Env):
         else:
             sign = 1
         while True:
-            #px = np.random.random() * self.square_width * 0.5 * sign
             px = self.square_width * (0.5 + np.random.random() * 0.1) * sign
             py = (np.random.random() - 0.5) * self.hallway_width
+
+#             px = (np.random.random() - 0.5) * self.square_width
+#             py = (np.random.random() - 0.5) * self.square_width
 
             collide = False
 #             for agent in [self.robot] + self.humans:
@@ -497,11 +500,12 @@ class CrowdSim(gym.Env):
             if not collide:
                 break
         while True:
-            #gx = np.random.random() * self.square_width * 0.5 * -sign
-            gx = -sign * self.square_width * 0.5
+            gx = -sign * self.square_width * 0.5 * np.random.uniform(0.7, 1.0)
             gy = (np.random.random() - 0.5) * self.hallway_width
-            #gx = px
-            #gy = py
+
+#            gx = (np.random.random() - 0.5) * self.square_width
+#            gy = (np.random.random() - 0.5) * self.square_width
+
             collide = False
 #             for agent in [self.robot] + self.humans:
 #                 #if norm((gx - agent.gx, gy - agent.gy)) < human.radius + agent.radius + self.discomfort_dist:
@@ -737,16 +741,22 @@ class CrowdSim(gym.Env):
                 sign = 1
                 
             px = np.random.random() * self.square_width * 0.2 * sign
-            
+             
             if np.random.random() > 0.5:
                 sign = -1
             else:
                 sign = 1
-            
-            py = -self.square_width * 0.35
-            
+             
+            py = -self.square_width * 0.35 * -sign * np.random.uniform(0.8, 1.2)
+             
             gx = np.random.random() * self.square_width * 0.2 * sign
-            gy = self.square_width * 0.35
+            gy = self.square_width * 0.35 * -sign  * np.random.uniform(0.8, 1.2)
+
+#             px = np.random.random() * self.square_width * 0.2
+#             py = np.random.random() * self.square_width * 0.2
+# 
+#             gx = np.random.random() * self.square_width * 0.2
+#             gy = np.random.random() * self.square_width * 0.2
             
             self.robot.set(px, py, np.pi/2, gx, gy, 0, 0, 0, 0)
 
@@ -998,9 +1008,9 @@ class CrowdSim(gym.Env):
         distance_from_goal = np.linalg.norm(np.array([self.robot.px, self.robot.py]) - np.array([self.robot.gx, self.robot.gy]))
 
         if self.testing:
-            reaching_goal = distance_from_goal < 3.0 * self.robot.radius
-        else:
             reaching_goal = distance_from_goal < 2.0 * self.robot.radius
+        else:
+            reaching_goal = distance_from_goal < 1.0 * self.robot.radius
 
         done = False
         
