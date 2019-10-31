@@ -728,6 +728,8 @@ class CrowdSim(gym.Env):
                 sign = 1
              
             py = -self.square_width * 0.35 * -sign * np.random.uniform(0.8, 1.2)
+            
+            theta = np.random.random() * 2 * np.pi
              
             gx = np.random.random() * self.square_width * 0.2 * sign
             gy = self.square_width * 0.35 * -sign  * np.random.uniform(0.8, 1.2)
@@ -738,7 +740,7 @@ class CrowdSim(gym.Env):
 #             gx = np.random.random() * self.square_width * 0.2
 #             gy = np.random.random() * self.square_width * 0.2
             
-            self.robot.set(px, py, np.pi/2, gx, gy, 0, 0, 0, 0)
+            self.robot.set(px, py, theta, gx, gy, 0, 0, 0, 0)
 
             if self.case_counter[phase] >= 0:
                 np.random.seed(counter_offset[phase] + self.case_counter[phase])
@@ -825,6 +827,7 @@ class CrowdSim(gym.Env):
           
             #robot_visible = np.random.uniform()
             #if robot_visible < 0.5:
+            
             if self.robot.visible:
                 ob += [self.robot.get_observable_state()]
             human_actions.append(human.act(ob, create_obstacles=self.create_obstacles))
@@ -842,6 +845,9 @@ class CrowdSim(gym.Env):
 
             # Move the robot
             if debug:
+                if self.human_num == 0:
+                    ob = [self.robot.get_observable_state()]
+
                 robot_action = self.robot.act(ob, create_obstacles=self.create_obstacles)
                 self.robot.step(robot_action)
             else:
