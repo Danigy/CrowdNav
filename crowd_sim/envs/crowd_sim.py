@@ -841,10 +841,12 @@ class CrowdSim(gym.Env):
 #                 self.attention_weights.append(self.robot.policy.get_attention_weights())
 
             # Move the robot
-            robot_action = self.robot.act(ob, create_obstacles=self.create_obstacles)
-            #self.robot.step(scaled_action)
-            self.robot.step(robot_action)
-            
+            if debug:
+                robot_action = self.robot.act(ob, create_obstacles=self.create_obstacles)
+                self.robot.step(robot_action)
+            else:
+                self.robot.step(scaled_action)
+
             # Move each human
             for i, human_action in enumerate(human_actions):
                 self.humans[i].step(human_action)
