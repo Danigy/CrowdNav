@@ -33,7 +33,7 @@ class Policy(object):
         return self.model
 
     @abc.abstractmethod
-    def predict(self, state):
+    def predict(self, state, create_obstacles=False):
         """
         Policy takes state as input and output an action
 

@@ -111,7 +111,7 @@ class SimpleNavigation():
             batch_norm = 'no'
             params['learning_trials'] = learning_trials = 1500000
             params['learning_rate'] = learning_rate = 0.0003
-            params['arch'] = 'standard_ped_state'
+            params['arch'] = 'random_visibility'
 
         # configure policy
         policy = policy_factory[args.policy]()

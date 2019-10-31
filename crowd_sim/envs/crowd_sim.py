@@ -262,26 +262,6 @@ class CrowdSim(gym.Env):
         
         self.obstacles = []
         
-#         # Create walls.
-#         if self.create_walls:
-#             self.static = [
-#                 pymunk.Segment(
-#                     self.space.static_body,
-#                     (0, 0.1 * self.height), (0, 0.9 * self.height), 3),
-#                 pymunk.Segment(
-#                     self.space.static_body,
-#                     (0.1 * self.width, self.height), (0.9 * self.width, self.height), 3),
-#                 pymunk.Segment(
-#                     self.space.static_body,
-#                     (0.9 * self.width, 0.9 * self.height), (0.9 * self.width, 0.1 * self.height), 3),
-#                 pymunk.Segment(
-#                     self.space.static_body,
-#                     (0.1 * self.width, 0.1 * self.height), (0.9 * self.width, 0.9 * self.height), 3)
-#                 #             pymunk.Segment(
-#                 #                 self.space.static_body,
-#                 #                 (self.width/2, self.height/2), (self.width/2, 1), 2)
-#             ]
-            
         # Create walls.
         wall_width_start = 0.01 * self.width
         wall_width_end = 0.99 * self.width
@@ -843,12 +823,11 @@ class CrowdSim(gym.Env):
             # observation for humans is always coordinates
             ob = [other_human.get_observable_state() for other_human in self.humans if other_human != human]
           
-            robot_visible = np.random.uniform()
-            
+            #robot_visible = np.random.uniform()
             #if robot_visible < 0.5:
             if self.robot.visible:
                 ob += [self.robot.get_observable_state()]
-            human_actions.append(human.act(ob, include_obstacles=self.create_obstacles))
+            human_actions.append(human.act(ob, create_obstacles=self.create_obstacles))
 
         # Move humans and robot according to current observation and action
         if update:            
@@ -862,7 +841,9 @@ class CrowdSim(gym.Env):
 #                 self.attention_weights.append(self.robot.policy.get_attention_weights())
 
             # Move the robot
-            self.robot.step(scaled_action)
+            robot_action = self.robot.act(ob, create_obstacles=self.create_obstacles)
+            #self.robot.step(scaled_action)
+            self.robot.step(robot_action)
             
             # Move each human
             for i, human_action in enumerate(human_actions):

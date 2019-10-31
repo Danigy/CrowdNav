@@ -79,7 +79,7 @@ class ORCA(Policy):
     def set_phase(self, phase):
         return
 
-    def predict(self, state, include_obstacles=False):
+    def predict(self, state, create_obstacles=False, create_walls=False):
         """
         Create a rvo2 simulation at each time step and run one step
         Python-RVO2 API: https://github.com/sybrenstuvel/Python-RVO2/blob/master/src/rvo2.pyx
@@ -105,7 +105,7 @@ class ORCA(Policy):
                 self.sim.addAgent(human_state.position, *params, human_state.radius + 0.01 + human_state.personal_space / 2.0,
                                   self.max_speed, human_state.velocity)
             
-            if include_obstacles:
+            if create_obstacles:
                 obstacles = list()
                 obstacles.append([(-0.5, 1.5), (0.5, 1.5), (0.5, 0.5), (-0.5, 0.5)])
                 obstacles.append([(-3.0, 0.5), (-2.5, 0.5), (-2.5, -0.5), (-3.0, -0.5)])
