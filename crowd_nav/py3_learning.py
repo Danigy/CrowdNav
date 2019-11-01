@@ -9,11 +9,13 @@ import tensorflow as tf
 
 from stable_baselines.common.vec_env import DummyVecEnv
 from stable_baselines.sac.policies import MlpPolicy, FeedForwardPolicy, CnnPolicy
-from stable_baselines.ppo2 import PPO2
 from stable_baselines.common.policies import MlpLstmPolicy, ActorCriticPolicy, register_policy, mlp_extractor
 
-from stable_baselines import SAC, PPO2
+from stable_baselines import SAC, PPO2, DDPG
 from stable_baselines.gail import ExpertDataset
+
+from stable_baselines.ddpg.policies import MlpPolicy as DPPG_MlpPolicy
+from stable_baselines.ddpg.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise, AdaptiveParamNoiseSpec
 
 from collections import OrderedDict
 import argparse
@@ -63,7 +65,9 @@ class SimpleNavigation():
             potential_reward_weight = None
             collision_penalty = None
             time_to_collision_penalty = None
-            personal_space_penalty = None          
+            personal_space_penalty = None
+            safe_obstacle_distance = None
+            safety_penalty_factor = None
             slack_reward = None
             energy_cost = None
             slack_reward = None
@@ -75,6 +79,7 @@ class SimpleNavigation():
             discomfort_dist = None            
             discomfort_penalty_factor = params['discomfort']
             safety_penalty_factor = params['safety']
+            freespace_reward = params['freespace']
             safe_obstacle_distance = None
             time_to_collision_penalty = None
             personal_space_penalty = None          
@@ -102,16 +107,17 @@ class SimpleNavigation():
             safety_penalty_factor = None
             safe_obstacle_distance = None
             time_to_collision_penalty = None
-            personal_space_penalty = None          
+            personal_space_penalty = None
+            freespace_reward = None      
             slack_reward = None
             energy_cost = None
-            params['nn_layers'] = nn_layers = [256, 128, 64]
+            params['nn_layers'] = nn_layers = [64, 64]
             gamma = 0.99
             decay = 0
             batch_norm = 'no'
             params['learning_trials'] = learning_trials = 500000
-            params['learning_rate'] = learning_rate = 0.0005
-            params['arch'] = 'randomized_obstacles'
+            params['learning_rate'] = learning_rate = 0.001
+            params['arch'] = 'freespace_reward'
 
         # configure policy
         policy = policy_factory[args.policy]()
@@ -149,7 +155,7 @@ class SimpleNavigation():
                 
         env = gym.make('CrowdSim-v0', human_num=self.human_num, n_sonar_sensors=self.n_sonar_sensors, success_reward=success_reward, collision_penalty=collision_penalty, time_to_collision_penalty=time_to_collision_penalty,
                        discomfort_dist=discomfort_dist, discomfort_penalty_factor=discomfort_penalty_factor, potential_reward_weight=potential_reward_weight,
-                       slack_reward=slack_reward, energy_cost=energy_cost, safe_obstacle_distance=safe_obstacle_distance, safety_penalty_factor=safety_penalty_factor,
+                       slack_reward=slack_reward, energy_cost=energy_cost, safe_obstacle_distance=safe_obstacle_distance, safety_penalty_factor=safety_penalty_factor, freespace_reward=freespace_reward,
                        visualize=visualize, show_sensors=show_sensors, testing=args.test, create_obstacles=args.create_obstacles, create_walls=args.create_walls, display_fps=args.display_fps)
         
         print("Gym environment created.")
@@ -179,8 +185,14 @@ class SimpleNavigation():
             save_weights_file = tb_log_dir + '/sac' + ENV_NAME + '_weights_final' + '.h5f'
 
         weights_path = os.path.join(tb_log_dir, "model_weights.{epoch:02d}.h5")
- 
-        model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate, buffer_size=50000)
+        
+        # the noise objects for DDPG
+        n_actions = env.action_space.shape[-1]
+        param_noise = None
+        action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=float(0.5) * np.ones(n_actions))
+
+        #model = DDPG(DPPG_MlpPolicy, env, verbose=1, tensorboard_log=tb_log_dir, param_noise=param_noise, action_noise=action_noise, buffer_size=max(50000, min(1000000, int(0.1 * learning_trials))))
+        model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate, buffer_size=max(50000, min(1000000, int(0.1 * learning_trials))))
         #model = PPO2(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate, buffer_size=100000)
 
 #         policy_kwargs = {
@@ -402,7 +414,7 @@ if __name__ == '__main__':
     
     class CustomPolicy(FeedForwardPolicy):
         def __init__(self, *args, **kwargs):
-            super(CustomPolicy, self).__init__(*args, layers=[256, 128, 64], layer_norm=False, feature_extraction="mlp", **kwargs)
+            super(CustomPolicy, self).__init__(*args, layers=[64, 64], layer_norm=False, feature_extraction="mlp", **kwargs)
 
     if NN_TUNING:
         param_list = []

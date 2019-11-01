@@ -47,7 +47,7 @@ class CrowdSim(gym.Env):
 
     def __init__(self, human_num=None, n_sonar_sensors=None, success_reward=None, collision_penalty=None, time_to_collision_penalty=None, discomfort_dist=None,
                        discomfort_penalty_factor=None, potential_reward_weight=None, slack_reward=None,
-                       energy_cost=None, safe_obstacle_distance=None, safety_penalty_factor=None, visualize=None,
+                       energy_cost=None, safe_obstacle_distance=None, safety_penalty_factor=None, freespace_reward=None, visualize=None,
                        show_sensors=None, expert_policy=False, testing=False, create_walls=False, create_obstacles=False, display_fps=1000):
         """
         Movement simulation for n+1 agents
@@ -72,7 +72,8 @@ class CrowdSim(gym.Env):
         self.slack_reward = slack_reward or None
         self.energy_cost = energy_cost or None
         self.safe_obstacle_distance = safe_obstacle_distance or None
-        self.safety_penalty_factor = safety_penalty_factor or None        
+        self.safety_penalty_factor = safety_penalty_factor or None  
+        self.freespace_reward = freespace_reward or None        
 
         self.lookahead_interval = 3.0
         # simulation configuration
@@ -106,17 +107,7 @@ class CrowdSim(gym.Env):
         self.sensor_readings = None
         self.sqrt_2 = np.sqrt(2.0)
         self.max_ttc = -1.0
-        
-        # ===== Crowdsim to Pygame conversion ===== #
-        self.scale_factor = 100
-        self.angle_offset = 0.0
 
-        self.sensor_range = 25 # meters
-        self.n_sensor_samples = 40
-        self.sensor_gap = 30 # pixels
-        self.sensor_spread = 10      # pixels
-        self.max_pygame_sensor_range = self.sensor_range * self.scale_factor
-        
         self.visualize = visualize
         self.show_sensors = show_sensors
         self.expert_policy = expert_policy
@@ -197,7 +188,8 @@ class CrowdSim(gym.Env):
         self.discomfort_dist = config.getfloat('reward', 'discomfort_dist')
         self.discomfort_penalty_factor = config.getfloat('reward', 'discomfort_penalty_factor')
         self.safety_penalty_factor = config.getfloat('reward', 'safety_penalty_factor')
-        self.safe_obstacle_distance = config.getfloat('reward', 'safe_obstacle_distance')                
+        self.safe_obstacle_distance = config.getfloat('reward', 'safe_obstacle_distance')
+        self.freespace_reward = config.getfloat('reward', 'freespace_reward')
         self.slack_reward = config.getfloat('reward', 'slack_reward')
         self.energy_cost = config.getfloat('reward', 'energy_cost')
         self.position_noise = config.getfloat('humans', 'position_noise')
@@ -222,6 +214,17 @@ class CrowdSim(gym.Env):
         else:
             raise NotImplementedError
         self.case_counter = {'train': 0, 'test': 0, 'val': 0}
+        
+        # ===== Crowdsim to Pygame conversion ===== #
+        self.scale_factor = 100
+        self.angle_offset = 0.0
+
+        self.sensor_range = self.square_width # meters
+        self.n_sensor_samples = 40
+        self.sensor_gap = 30 # pixels
+        self.sensor_spread = 10      # pixels
+        self.max_pygame_sensor_range = self.sensor_range * self.scale_factor
+
         
         logging.info('human number: {}'.format(self.human_num))
         if self.randomize_attributes:
@@ -1091,21 +1094,26 @@ class CrowdSim(gym.Env):
 #                     obstacle_cost = 0.0
 #                    
 #                 reward += obstacle_cost
-                
-            # Distance safety factor
+            
             if self.n_sonar_sensors > 0:
-                #min_obstacle_distance = np.linalg.norm(self.closest_point)
+                # Encourage free space motion
                 sensor_readings = np.array(self.sensor_readings)
-                try:
-                    min_obstacle_distance = min(sensor_readings[np.where(sensor_readings >= 0)])
-                    min_obstacle_distance *= self.max_pygame_sensor_range / self.scale_factor
-                except:
-                    min_obstacle_distance = np.Inf
-                   
-                if min_obstacle_distance < self.safe_obstacle_distance:
-                    obstacle_cost = (min_obstacle_distance - self.safe_obstacle_distance) * self.safety_penalty_factor * self.time_step
-                else:
-                    obstacle_cost = 0.0
+                mean_distance_to_obstacles = np.mean(sensor_readings)
+                freespace_reward = mean_distance_to_obstacles * self.freespace_reward * self.time_step
+                reward += freespace_reward
+
+                # Distance safety factor
+                min_obstacle_distance = min(sensor_readings[np.where(sensor_readings >= 0)])
+                min_obstacle_distance *= self.max_pygame_sensor_range / self.scale_factor
+
+                #if min_obstacle_distance < self.safe_obstacle_distance:
+                #obstacle_cost = (min_obstacle_distance - self.safe_obstacle_distance) * self.safety_penalty_factor * self.time_step
+                obstacle_cost = 1.0 / (max(0.0, min_obstacle_distance - self.safe_obstacle_distance - self.robot.radius) + 0.001)
+                obstacle_cost *= self.safety_penalty_factor * self.time_step
+                #else:
+                #    obstacle_cost = 0.0
+                
+                #print(min_obstacle_distance, obstacle_cost)
                    
                 reward += obstacle_cost
 
@@ -1214,6 +1222,10 @@ class CrowdSim(gym.Env):
             
         if self.visualize and self.show_sensors:
             pygame.draw.circle(self.surface, (0, 255, 255, 200), (int(ping_x), self.screen_y(int(ping_y))), 10)
+        
+        # add some noise
+        rel_x = (1.0 + random.uniform(-1, 1) * self.position_noise) * rel_x
+        rel_y = (1.0 + random.uniform(-1, 1) * self.position_noise) * rel_y
         
         return np.array([rel_x, rel_y])
     
