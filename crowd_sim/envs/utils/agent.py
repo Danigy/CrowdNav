@@ -108,7 +108,7 @@ class Agent(object):
 
 
     @abc.abstractmethod
-    def act(self, ob, create_obstacles=False):
+    def act(self, ob, create_obstacles=False, obstacles=None):
         """
         Compute state using received observation and pass it to policy
 

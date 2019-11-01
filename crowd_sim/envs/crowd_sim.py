@@ -261,6 +261,8 @@ class CrowdSim(gym.Env):
         self.pedestrians = []
         
         self.obstacles = []
+        self.perturbed_obstacles = []
+        self.pymunk_obstacles = []
         
         # Create walls.
         wall_width_start = 0.01 * self.width
@@ -288,17 +290,38 @@ class CrowdSim(gym.Env):
             ]
         
         # Create obstacles
-        if self.create_obstacles:   
-            obstacles = list()         
-            obstacles.append([(-0.5, 1.5), (0.5, 1.5), (0.5, 0.5), (-0.5, 0.5)])
-            obstacles.append([(-3.0, 0.5), (-2.5, 0.5), (-2.5, -0.5), (-3.0, -0.5)])
-            obstacles.append([(4.0, -0.5), (3.5, -0.5), (3.5, -1.5), (4.0, -1.5)])
+        if self.create_obstacles:
+            self.obstacles = [] 
+            self.obstacles.append([(-0.5, 1.5), (0.5, 1.5), (0.5, 0.5), (-0.5, 0.5)])
+            self.obstacles.append([(-3.0, 0.5), (-2.5, 0.5), (-2.5, -0.5), (-3.0, -0.5)])
+            self.obstacles.append([(4.0, -0.5), (3.5, -0.5), (3.5, -1.5), (4.0, -1.5)])
+            
+            self.make_pymunk_obstacles(self.obstacles)
+             
+        self.action_space = spaces.Box(-1.0, 1.0, shape=[2,])
+        #self.observation_space = spaces.Box(-1.0, 1.0, shape=[self.n_sonar_sensors + 2 + 2 + 5 * self.human_num,])
+        self.observation_space = spaces.Box(-1.0, 1.0, shape=[self.n_sonar_sensors + 2 + 5 * self.human_num,])
+        
+    def make_pymunk_obstacles(self, obstacles=None):
+        self.space.remove(self.static)
+        self.pymunk_obstacles = []
+        self.perturbed_obstacles = []
+        
+        for obstacle in self.obstacles:
+            vertices = list()
+            for vertex in obstacle:
+                perturbed_vertex_x = vertex[0] * (1 + np.random.uniform(-0.1, 0.1))
+                perturbed_vertex_y = vertex[1] * (1 + np.random.uniform(-0.1, 0.1))
+                vertices.append((perturbed_vertex_x, perturbed_vertex_y))
+            self.perturbed_obstacles.append(vertices)
 
-            for obstacle in obstacles:
-                pymunk_obstacle = self.crowd_obstacle_to_pygame(obstacle)
-                vertices = pymunk_obstacle.get_vertices()
-                self.static.append(pymunk_obstacle)
-
+        self.static = list()
+        
+        for obstacle in self.perturbed_obstacles:
+            pymunk_obstacle = self.crowd_obstacle_to_pygame(obstacle)
+            vertices = pymunk_obstacle.get_vertices()
+            self.static.append(pymunk_obstacle)
+            
         for s in self.static:
             s.friction = 1.
             obstacle_filter = pymunk.ShapeFilter(categories=3)
@@ -306,13 +329,9 @@ class CrowdSim(gym.Env):
             s.collision_type = 3
             s.group = 3
             s.color = THECOLORS["red"]
-            self.obstacles.append(s)
-             
+            self.pymunk_obstacles.append(s)
+            
         self.space.add(self.static)
-
-        self.action_space = spaces.Box(-1.0, 1.0, shape=[2,])
-        #self.observation_space = spaces.Box(-1.0, 1.0, shape=[self.n_sonar_sensors + 2 + 2 + 5 * self.human_num,])
-        self.observation_space = spaces.Box(-1.0, 1.0, shape=[self.n_sonar_sensors + 2 + 5 * self.human_num,])
 
     def set_robot(self, robot):
         self.robot = robot
@@ -714,6 +733,9 @@ class CrowdSim(gym.Env):
         else:
             counter_offset = {'train': self.case_capacity['val'] + self.case_capacity['test'],
                               'val': 0, 'test': self.case_capacity['val']}
+            
+            if self.create_obstacles:
+                self.make_pymunk_obstacles(self.obstacles)
 
             if np.random.random() > 0.5:
                 sign = -1
@@ -792,7 +814,7 @@ class CrowdSim(gym.Env):
         state = self._get_state()
         
         if debug or self.expert_policy:
-            return state, ob
+            return state, ob, self.perturbed_obstacles
         else:
             return state
 
@@ -830,7 +852,7 @@ class CrowdSim(gym.Env):
             
             if self.robot.visible:
                 ob += [self.robot.get_observable_state()]
-            human_actions.append(human.act(ob, create_obstacles=self.create_obstacles))
+            human_actions.append(human.act(ob, create_obstacles=self.create_obstacles, obstacles=self.perturbed_obstacles))
 
         # Move humans and robot according to current observation and action
         if update:            
@@ -847,8 +869,8 @@ class CrowdSim(gym.Env):
             if debug:
                 if self.human_num == 0:
                     ob = [self.robot.get_observable_state()]
-
-                robot_action = self.robot.act(ob, create_obstacles=self.create_obstacles)
+                
+                robot_action = self.robot.act(ob, create_obstacles=self.create_obstacles, obstacles=self.perturbed_obstacles)
                 self.robot.step(robot_action)
             else:
                 self.robot.step(scaled_action)
@@ -938,7 +960,7 @@ class CrowdSim(gym.Env):
         self.space.step(self.time_step)
             
         if self.visualize:
-            for obstacle in self.obstacles:
+            for obstacle in self.pymunk_obstacles:
                 if type(obstacle) == pymunk.shapes.Poly:
                     vertices = obstacle.get_vertices()
                     screen_vertices = list()

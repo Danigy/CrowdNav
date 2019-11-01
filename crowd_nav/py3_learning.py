@@ -105,13 +105,13 @@ class SimpleNavigation():
             personal_space_penalty = None          
             slack_reward = None
             energy_cost = None
-            params['nn_layers'] = nn_layers = [256, 128, 64, 32]
+            params['nn_layers'] = nn_layers = [256, 128, 64]
             gamma = 0.99
             decay = 0
             batch_norm = 'no'
-            params['learning_trials'] = learning_trials = 1500000
-            params['learning_rate'] = learning_rate = 0.0003
-            params['arch'] = 'random_visibility'
+            params['learning_trials'] = learning_trials = 500000
+            params['learning_rate'] = learning_rate = 0.0005
+            params['arch'] = 'randomized_obstacles'
 
         # configure policy
         policy = policy_factory[args.policy]()
@@ -402,12 +402,12 @@ if __name__ == '__main__':
     
     class CustomPolicy(FeedForwardPolicy):
         def __init__(self, *args, **kwargs):
-            super(CustomPolicy, self).__init__(*args, layers=[256, 128, 64, 32], layer_norm=False, feature_extraction="mlp", **kwargs)
+            super(CustomPolicy, self).__init__(*args, layers=[256, 128, 64], layer_norm=False, feature_extraction="mlp", **kwargs)
 
     if NN_TUNING:
         param_list = []
     
-        nn_architectures = [[64, 64], [512, 256, 128, 64], [256, 128, 64, 32]]
+        nn_architectures = [[64, 64], [512, 256, 128], [256, 128, 64]]
         #nn_architectures = [[64, 64, 64], [1024, 512, 256], [512, 256, 128, 64]]
         gammas = [0.99, 0.95]
         #decays = [0.0]

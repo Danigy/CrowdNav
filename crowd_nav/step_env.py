@@ -108,10 +108,10 @@ def main():
         n_episodes = 0
 
         while n_episodes < 100:
-            state, ob = env.reset(args.phase, args.test_case, debug=True)
+            state, ob, obstacles = env.reset(args.phase, args.test_case, debug=True)
             done = False
             while not done:
-                action = robot.act(ob, create_obstacles=args.create_obstacles)
+                action = robot.act(ob, create_obstacles=args.create_obstacles, obstacles=obstacles)
                 state, ob, _, done, info = env.step(action, update=True, debug=True, display_fps=1000)
                 #time.sleep(0.01)
 
