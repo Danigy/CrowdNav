@@ -752,12 +752,12 @@ class CrowdSim(gym.Env):
             else:
                 sign = 1
              
-            py = self.square_width * 0.2 * sign# * np.random.uniform(0.8, 1.2)
+            py = self.square_width * 0.4 * sign# * np.random.uniform(0.8, 1.2)
             
             theta = np.random.random() * 2 * np.pi
              
             gx = np.random.random() * self.square_width * 0.2 * sign
-            gy = self.square_width * 0.2 * -sign  #* np.random.uniform(0.8, 1.2)
+            gy = self.square_width * 0.4 * -sign  #* np.random.uniform(0.8, 1.2)
 
 #             px = np.random.random() * self.square_width * 0.2
 #             py = np.random.random() * self.square_width * 0.2

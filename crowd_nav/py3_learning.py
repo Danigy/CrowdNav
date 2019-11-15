@@ -111,7 +111,7 @@ class SimpleNavigation():
             freespace_reward = None      
             slack_reward = None
             energy_cost = None
-            params['nn_layers'] = nn_layers = [64, 64]
+            params['nn_layers'] = nn_layers = [256, 128, 64]
             gamma = 0.99
             decay = 0
             batch_norm = 'no'
@@ -414,7 +414,7 @@ if __name__ == '__main__':
     
     class CustomPolicy(FeedForwardPolicy):
         def __init__(self, *args, **kwargs):
-            super(CustomPolicy, self).__init__(*args, layers=[64, 64], layer_norm=False, feature_extraction="mlp", **kwargs)
+            super(CustomPolicy, self).__init__(*args, layers=[256, 128, 64], layer_norm=False, feature_extraction="mlp", **kwargs)
 
     if NN_TUNING:
         param_list = []
