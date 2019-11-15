@@ -488,7 +488,7 @@ class CrowdSim(gym.Env):
         else:
             sign = 1
         while True:
-            px = self.square_width * (0.5 + np.random.random() * 0.1) * sign
+            px = self.square_width * 0.4 * sign
             py = (np.random.random() - 0.5) * self.hallway_width
 
 #             px = (np.random.random() - 0.5) * self.square_width
@@ -502,7 +502,7 @@ class CrowdSim(gym.Env):
             if not collide:
                 break
         while True:
-            gx = -sign * self.square_width * 0.5 * np.random.uniform(0.7, 1.0)
+            gx = self.square_width * 0.4 * -sign
             gy = (np.random.random() - 0.5) * self.hallway_width
 
 #            gx = (np.random.random() - 0.5) * self.square_width
@@ -752,12 +752,12 @@ class CrowdSim(gym.Env):
             else:
                 sign = 1
              
-            py = -self.square_width * 0.35 * -sign * np.random.uniform(0.8, 1.2)
+            py = self.square_width * 0.2 * sign# * np.random.uniform(0.8, 1.2)
             
             theta = np.random.random() * 2 * np.pi
              
             gx = np.random.random() * self.square_width * 0.2 * sign
-            gy = self.square_width * 0.35 * -sign  * np.random.uniform(0.8, 1.2)
+            gy = self.square_width * 0.2 * -sign  #* np.random.uniform(0.8, 1.2)
 
 #             px = np.random.random() * self.square_width * 0.2
 #             py = np.random.random() * self.square_width * 0.2
@@ -852,7 +852,6 @@ class CrowdSim(gym.Env):
           
             #robot_visible = np.random.uniform()
             #if robot_visible < 0.5:
-            
             if self.robot.visible:
                 ob += [self.robot.get_observable_state()]
             human_actions.append(human.act(ob, create_obstacles=self.create_obstacles, obstacles=self.perturbed_obstacles))

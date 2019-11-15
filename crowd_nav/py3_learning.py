@@ -116,8 +116,8 @@ class SimpleNavigation():
             decay = 0
             batch_norm = 'no'
             params['learning_trials'] = learning_trials = 500000
-            params['learning_rate'] = learning_rate = 0.001
-            params['arch'] = 'freespace_reward'
+            params['learning_rate'] = learning_rate = 0.0005
+            params['arch'] = 'gibson_benchmark_invisible_robot_discomfort_ttc'
 
         # configure policy
         policy = policy_factory[args.policy]()
