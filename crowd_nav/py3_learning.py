@@ -219,7 +219,7 @@ class SimpleNavigation():
                     n_episodes += 1
                     if n_episodes % 10 == 0:
                     #del info['terminal_observation']
-                        print([(key, trunc(info[0][key], 1)) for key in ['success_rate', 'collision_rate', 'timeouts', 'personal_space_violations', 'shortest_path_length']])
+                        print([(key, trunc(info[0][key], 2)) for key in ['success_rate', 'collision_rate', 'timeouts', 'personal_space_violations', 'shortest_path_length']])
                     obs = env.reset()
                     
             #env.close()
@@ -238,9 +238,7 @@ class SimpleNavigation():
                     n_episodes += 1
                     #del info['terminal_observation']
                     if n_episodes % 2 == 0:
-                        print("episodes:", n_episodes, [(key, trunc(info[0][key], 1)) for key in ['success_rate', 'ped_collision_rate', 'collision_rate', 'timeout_rate', 'personal_space_violations', 'shortest_path_length']])
-                    obs = env.reset()
-
+                        print("episodes:", n_episodes, [(key, trunc(info[0][key], 2)) for key in ['success_rate', 'ped_collision_rate', 'collision_rate', 'timeout_rate', 'personal_space_violations', 'shortest_path_length']])
             env.close()
             os._exit(0)
 
@@ -262,7 +260,7 @@ class SimpleNavigation():
             if done:
                 n_episodes += 1
                 if n_episodes % 100 == 0:
-                    print("episodes:", n_episodes, [(key, trunc(info[0][key], 1)) for key in ['success_rate', 'ped_collision_rate', 'collision_rate', 'timeout_rate', 'personal_space_violations', 'shortest_path_length']])
+                    print("episodes:", n_episodes, [(key, trunc(info[0][key], 2)) for key in ['success_rate', 'ped_collision_rate', 'collision_rate', 'timeout_rate', 'personal_space_violations', 'shortest_path_length']])
                     obs = env.reset()
         env.close()
     

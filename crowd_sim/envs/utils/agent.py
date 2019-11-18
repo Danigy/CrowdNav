@@ -64,8 +64,18 @@ class Agent(object):
         if v_pref is not None:
             self.v_pref = v_pref
 
-    def get_observable_state(self):
-        return ObservableState(self.px, self.py, self.theta, self.vx, self.vy, self.vr, self.radius, self.personal_space)
+    def get_observable_state(self, position_noise=0.0, velocity_noise=0.0):
+        observable_state = ObservableState(self.px, self.py, self.theta, self.vx, self.vy, self.vr, self.radius, self.personal_space)
+        observable_state.px *= (1.0 + np.random.uniform(-position_noise, position_noise))
+        observable_state.py *= (1.0 + np.random.uniform(-position_noise, position_noise))
+        observable_state.theta *= (1.0 + np.random.uniform(-position_noise, position_noise))
+
+        observable_state.vx *= (1.0 + np.random.uniform(-velocity_noise, velocity_noise))
+        observable_state.vy *= (1.0 + np.random.uniform(-velocity_noise, velocity_noise))
+        observable_state.vr *= (1.0 + np.random.uniform(-velocity_noise, velocity_noise))
+
+        #return ObservableState(self.px, self.py, self.theta, self.vx, self.vy, self.vr, self.radius, self.personal_space)
+        return observable_state
 
     def get_next_observable_state(self, action):
         self.check_validity(action)
@@ -84,8 +94,18 @@ class Agent(object):
             
         return ObservableState(next_px, next_py, next_theta, next_vx, next_vy, next_vr, self.radius, self.personal_space)
 
-    def get_full_state(self):
-        return FullState(self.px, self.py, self.theta, self.vx, self.vy, self.vr, self.radius, self.personal_space, self.gx, self.gy, self.gr, self.v_pref)
+    def get_full_state(self, position_noise=0.0, velocity_noise=0.0):
+        full_state = FullState(self.px, self.py, self.theta, self.vx, self.vy, self.vr, self.radius, self.personal_space, self.gx, self.gy, self.gr, self.v_pref)
+        full_state.px *= (1.0 + np.random.uniform(-position_noise, position_noise))
+        full_state.py *= (1.0 + np.random.uniform(-position_noise, position_noise))
+        full_state.theta *= (1.0 + np.random.uniform(-position_noise, position_noise))
+
+        full_state.vx *= (1.0 + np.random.uniform(-velocity_noise, velocity_noise))
+        full_state.vy *= (1.0 + np.random.uniform(-velocity_noise, velocity_noise))
+        full_state.vr *= (1.0 + np.random.uniform(-velocity_noise, velocity_noise))
+        
+        return full_state
+        #return FullState(self.px, self.py, self.theta, self.vx, self.vy, self.vr, self.radius, self.personal_space, self.gx, self.gy, self.gr, self.v_pref)
 
     def get_position(self):
         return self.px, self.py, self.theta

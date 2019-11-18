@@ -19,7 +19,7 @@ def main():
     parser.add_argument('--model_dir', type=str, default=None)
     parser.add_argument('--il', default=False, action='store_true')
     parser.add_argument('--gpu', default=False, action='store_true')
-    parser.add_argument('--visualize', default=True, action='store_true')
+    parser.add_argument('--visualize', type=str2bool, default=True, required=False)
     parser.add_argument('--show_sensors', default=True, action='store_true')
     parser.add_argument('-o', '--create_obstacles',type=str2bool, default=False, required=False)
     parser.add_argument('-w', '--create_walls',type=str2bool, default=False, required=False)
@@ -104,37 +104,27 @@ def main():
     policy.set_env(env)
     robot.print_info()
     
-    if args.visualize:
-        n_episodes = 0
+    n_episodes = 0
 
-        state, ob, obstacles = env.reset(args.phase, args.test_case, debug=True)
+    state, ob, obstacles = env.reset(args.phase, args.test_case, debug=True)
 
-        while n_episodes < 100:
-            done = False
+    while n_episodes < 100:
+        done = False
+        
+        while not done:
+            action = robot.act(ob, create_obstacles=args.create_obstacles, obstacles=obstacles)
+            state, ob, _, done, info = env.step(action, update=True, debug=True, display_fps=1000)
+            #time.sleep(0.01)
+
+        n_episodes += 1
+        
+        print("episodes:", n_episodes, [(key, trunc(info[key], 2)) for key in ['success_rate', 'ped_collision_rate', 'collision_rate', 'timeout_rate', 'personal_space_violations', 'shortest_path_length']])
+        #print(info)
             
-            while not done:
-                action = robot.act(ob, create_obstacles=args.create_obstacles, obstacles=obstacles)
-                state, ob, _, done, info = env.step(action, update=True, debug=True, display_fps=1000)
-                #time.sleep(0.01)
+        obs = env.reset()
 
-            n_episodes += 1
-            if n_episodes % 1 == 0:
-                print(info)
-            obs = env.reset()
-                #current_pos = np.array(robot.get_position())
-                #logging.debug('Speed: %.2f', np.linalg.norm(current_pos - last_pos) / robot.time_step)
-                #last_pos = current_pos
-            #if args.traj:
-            #    env.render('traj', args.video_file)
-            #else:
-            #    env.render('video', args.video_file)
-    
-            #logging.info('It takes %.2f seconds to finish. Final status is %s', env.global_time, info)
-            #if robot.visible and info == 'reach goal':
-            #    human_times = env.get_human_times()
-            #    logging.info('Average time for humans to reach goal: %.2f', sum(human_times) / len(human_times))
-    else:
-        explorer.run_k_episodes(env.case_size[args.phase], args.phase, print_failure=True)
+    #else:
+    #    explorer.run_k_episodes(env.case_size[args.phase], args.phase, print_failure=True)
 
     env.close()
     os._exit(0)
@@ -179,5 +169,10 @@ if __name__ == '__main__':
             return False
         else:
             raise argparse.ArgumentTypeError('Boolean value expected.')
+        
+    def trunc(f, n):
+        # Truncates/pads a float f to n decimal places without rounding
+        slen = len('%.*f' % (n, f))
+        return float(str(f)[:slen])
         
     main()

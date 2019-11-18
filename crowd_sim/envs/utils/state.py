@@ -1,3 +1,5 @@
+import numpy as np
+
 class FullState(object):
     def __init__(self, px, py, theta, vx, vy, vr, radius, personal_space, gx, gy, gr, v_pref):
         self.px = px

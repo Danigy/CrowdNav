@@ -127,6 +127,9 @@ class CrowdSim(gym.Env):
         ''' 'OpenAI Gym Requirements '''
         self._seed(123)
         
+    def _render(self):
+        pass
+        
     def create_robot(self, x, y, r, robot_radius):
         inertia = pymunk.moment_for_circle(1, 0, 14, (0, 0))
         self.robot_body = pymunk.Body(1, inertia)
@@ -716,7 +719,7 @@ class CrowdSim(gym.Env):
     
     def compute_metrics(self):
         if self.success:
-            self.spl_sum += self.episode_distance / (max(self.episode_shortest_distance, self.episode_distance))
+            self.spl_sum += self.episode_shortest_distance / (max(self.episode_shortest_distance, self.episode_distance))
         
         self.spl = self.spl_sum / self.n_episodes
         
@@ -1172,11 +1175,11 @@ class CrowdSim(gym.Env):
 
         if not debug and self.n_episodes > 0:
             info_dict = {'episodes': self.n_episodes,
-                         'successes': self.n_successes / self.distance_traveled,
-                         'collisions': self.n_collisions / self.distance_traveled,
-                         'ped_collisions': self.n_ped_collisions / self.distance_traveled,
-                         'ped_hits_robot': self.n_ped_hits_robot / self.distance_traveled,
-                         'timeouts': self.n_timeouts / self.distance_traveled,
+                         'successes': self.n_successes,
+                         'collisions': self.n_collisions,
+                         'ped_collisions': self.n_ped_collisions,
+                         'ped_hits_robot': self.n_ped_hits_robot,
+                         'timeouts': self.n_timeouts,
                          'personal_space_violations': self.n_personal_space_violations / self.distance_traveled,
                          'cutting_off': self.n_cutting_off / self.distance_traveled,
                          'success_rate': 0 if self.n_episodes == 0 else 100 * self.n_successes / self.n_episodes,
