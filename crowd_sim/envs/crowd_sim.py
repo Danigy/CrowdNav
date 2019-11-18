@@ -60,7 +60,7 @@ class CrowdSim(gym.Env):
         self.time_step = None
         self.robot = None
         self.humans = None
-        self.global_time = None
+        self.episode_time = None
         self.human_times = None
         
         # reward function
@@ -115,6 +115,12 @@ class CrowdSim(gym.Env):
         self.create_walls = create_walls
         self.create_obstacles = create_obstacles
         self.display_fps = display_fps
+        
+        self.distance_traveled = 0.0
+        self.time_elapsed = 0.0
+        self.episode_distance = 0.0
+        self.spl_sum = 0 # Shortest Path Length
+        self.spl = 0     # average Shortest Path Length
 
         self.static = list()
                 
@@ -488,7 +494,7 @@ class CrowdSim(gym.Env):
         else:
             sign = 1
         while True:
-            px = self.square_width * 0.4 * sign
+            px = sign * self.square_width * 0.3 * (1.0 + random.uniform(-0.2, 0.2))
             py = (np.random.random() - 0.5) * self.hallway_width
 
 #             px = (np.random.random() - 0.5) * self.square_width
@@ -502,7 +508,7 @@ class CrowdSim(gym.Env):
             if not collide:
                 break
         while True:
-            gx = self.square_width * 0.4 * -sign
+            gx = -sign * self.square_width * 0.3 * (1.0 + random.uniform(-0.2, 0.2))
             gy = (np.random.random() - 0.5) * self.hallway_width
 
 #            gx = (np.random.random() - 0.5) * self.square_width
@@ -545,12 +551,12 @@ class CrowdSim(gym.Env):
 #                     vel_pref /= norm(vel_pref)
 #                 sim.setAgentPrefVelocity(i, tuple(vel_pref))
 #             sim.doStep()
-#             self.global_time += self.time_step
-#             if self.global_time > max_time:
+#             self.episode_time += self.time_step
+#             if self.episode_time > max_time:
 #                 logging.warning('Simulation cannot terminate!')
 #             for i, human in enumerate(self.humans):
 #                 if self.human_times[i] == 0 and human.reached_destination():
-#                     self.human_times[i] = self.global_time
+#                     self.human_times[i] = self.episode_time
 # 
 #             # for visualization
 #             self.robot.set_position(sim.getAgentPosition(0))
@@ -707,13 +713,24 @@ class CrowdSim(gym.Env):
     def _seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
-
-    def reset(self, phase='test', test_case=None, debug=False):
+    
+    def compute_metrics(self):
+        if self.success:
+            self.spl_sum += self.episode_distance / (max(self.episode_shortest_distance, self.episode_distance))
+        
+        self.spl = self.spl_sum / self.n_episodes
+        
+    def _reset(self, phase='test', test_case=None, debug=False):
         """
         Set px, py, gx, gy, vx, vy, theta for robot and humans
         :return:
         """
+        if self.n_episodes > 0:
+            self.compute_metrics()
+        
         self.n_steps = 0
+        self.episode_distance = 0.0
+        self.episode_time = 0.0
         
         if self.robot is None:
             raise AttributeError('robot has to be set!')
@@ -721,9 +738,7 @@ class CrowdSim(gym.Env):
         
         if test_case is not None:
             self.case_counter[phase] = test_case
-            
-        self.global_time = 0
-        
+                    
         if phase == 'test':
             self.human_times = [0] * self.human_num
         else:
@@ -745,19 +760,21 @@ class CrowdSim(gym.Env):
             else:
                 sign = 1
                 
-            px = np.random.random() * self.square_width * 0.2 * sign
+            px = sign * np.random.random() * self.square_width * 0.2
              
             if np.random.random() > 0.5:
                 sign = -1
             else:
                 sign = 1
              
-            py = self.square_width * 0.2 * sign# * np.random.uniform(0.8, 1.2)
+            py = sign * self.square_width * 0.3 * (1.0 + random.uniform(-0.2, 0.2))# * np.random.uniform(0.8, 1.2)
             
             theta = np.random.random() * 2 * np.pi
              
-            gx = np.random.random() * self.square_width * 0.2 * sign
-            gy = self.square_width * 0.2 * -sign  #* np.random.uniform(0.8, 1.2)
+            gx = sign * np.random.random() * self.square_width * 0.2
+            gy = -sign * self.square_width * 0.3 * (1.0 + random.uniform(-0.2, 0.2))  #* np.random.uniform(0.8, 1.2)
+            
+            self.episode_shortest_distance = np.sqrt((gx - px)**2 + (gy - py)**2)
 
 #             px = np.random.random() * self.square_width * 0.2
 #             py = np.random.random() * self.square_width * 0.2
@@ -766,6 +783,9 @@ class CrowdSim(gym.Env):
 #             gy = np.random.random() * self.square_width * 0.2
             
             self.robot.set(px, py, theta, gx, gy, 0, 0, 0, 0)
+            
+            self.last_robot_px = self.robot.px
+            self.last_robot_py = self.robot.py
 
             if self.case_counter[phase] >= 0:
                 np.random.seed(counter_offset[phase] + self.case_counter[phase])
@@ -824,7 +844,7 @@ class CrowdSim(gym.Env):
     def onestep_lookahead(self, action, debug=True, visualize=None, display_fps=None):
         return self.step(action, update=False, debug=debug, visualize=None, display_fps=None)
 
-    def step(self, action, update=True, debug=False, visualize=None, display_fps=None):
+    def _step(self, action, update=True, debug=False, visualize=None, display_fps=None):
         """
         Compute actions for all agents, detect collision, update environment and return (ob, reward, done, info)
 
@@ -881,12 +901,12 @@ class CrowdSim(gym.Env):
             for i, human_action in enumerate(human_actions):
                 self.humans[i].step(human_action)
                 
-            self.global_time += self.time_step
+            self.episode_time += self.time_step
             
             for i, human in enumerate(self.humans):
                 # only record the first time the human reaches the goal
                 if self.human_times[i] == 0 and human.reached_destination():
-                    self.human_times[i] = self.global_time
+                    self.human_times[i] = self.episode_time
 
             # Get the new observation
             if self.robot.sensor == 'coordinates':
@@ -958,6 +978,17 @@ class CrowdSim(gym.Env):
 
             index += 1
             
+        # Update distance metrics
+        self.time_elapsed += self.time_step
+        
+        distance_traveled = np.sqrt((self.robot.px - self.last_robot_px)**2 + (self.robot.py - self.last_robot_py)**2)
+        
+        self.distance_traveled += distance_traveled
+        self.episode_distance += distance_traveled
+        
+        self.last_robot_px = self.robot.px
+        self.last_robot_py = self.robot.py
+                    
         # Update Pymunk
         self.space.step(self.time_step)
             
@@ -980,6 +1011,7 @@ class CrowdSim(gym.Env):
             self.screen.fill(THECOLORS["black"])
 
             self.clock.tick(self.display_fps)
+            
         if debug or self.expert_policy:
             return state, ob, reward, done, info
         else:
@@ -989,6 +1021,7 @@ class CrowdSim(gym.Env):
         # collision detection
         dmin = float('inf')
         collision = False
+        self.success = False
     
         # minimum distance detection between robot and humans
         for i, human in enumerate(self.humans):
@@ -1021,9 +1054,9 @@ class CrowdSim(gym.Env):
         distance_from_goal = np.linalg.norm(np.array([self.robot.px, self.robot.py]) - np.array([self.robot.gx, self.robot.gy]))
 
         if self.testing:
-            reaching_goal = distance_from_goal < 2.0 * self.robot.radius
+            reaching_goal = distance_from_goal < 4.0 * self.robot.radius
         else:
-            reaching_goal = distance_from_goal < 1.0 * self.robot.radius
+            reaching_goal = distance_from_goal < 2.0 * self.robot.radius
 
         done = False
         
@@ -1031,7 +1064,7 @@ class CrowdSim(gym.Env):
         
         info_dict = OrderedDict()
                 
-        if self.global_time >= self.time_limit - 1:
+        if self.episode_time >= self.time_limit - 1:
             self.n_timeouts += 1
             reward = 0
             done = True
@@ -1054,10 +1087,11 @@ class CrowdSim(gym.Env):
             reward = self.success_reward
             done = True
             info = ReachGoal()
+            self.success = True
         elif dmin < self.discomfort_dist:
             # penalize agent for getting too close
             # adjust the reward based on FPS
-            self.n_personal_space_violations += 1
+            self.n_personal_space_violations += 1 * (self.discomfort_dist - dmin) / self.discomfort_dist * self.time_step
             reward = (dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
             done = False
             info = Danger(dmin)
@@ -1135,23 +1169,22 @@ class CrowdSim(gym.Env):
             info = Nothing()
         else:
             self.n_episodes += 1
-                        
-        #print("Collision?", collision, " Success?", reaching_goal, " Discomfort: ", discomfort, " Potential", potent, " Reward", reward)
 
-        if not debug:
+        if not debug and self.n_episodes > 0:
             info_dict = {'episodes': self.n_episodes,
-                         'successes': self.n_successes,
-                         'collisions': self.n_collisions,
-                         'ped_collisions': self.n_ped_collisions,
-                         'ped_hits_robot': self.n_ped_hits_robot,
-                         'timeouts': self.n_timeouts,
-                         'personal_space_violations': self.n_personal_space_violations,
-                         'cutting_off': self.n_cutting_off,
+                         'successes': self.n_successes / self.distance_traveled,
+                         'collisions': self.n_collisions / self.distance_traveled,
+                         'ped_collisions': self.n_ped_collisions / self.distance_traveled,
+                         'ped_hits_robot': self.n_ped_hits_robot / self.distance_traveled,
+                         'timeouts': self.n_timeouts / self.distance_traveled,
+                         'personal_space_violations': self.n_personal_space_violations / self.distance_traveled,
+                         'cutting_off': self.n_cutting_off / self.distance_traveled,
                          'success_rate': 0 if self.n_episodes == 0 else 100 * self.n_successes / self.n_episodes,
                          'collision_rate': 0 if self.n_episodes == 0 else 100 * self.n_collisions / self.n_episodes,
                          'ped_collision_rate': 0 if self.n_episodes == 0 else 100 * self.n_ped_collisions / self.n_episodes,
                          'ped_hits_robot_rate': 0 if self.n_episodes == 0 else 100 * self.n_ped_hits_robot / self.n_episodes,
-                         'timeout_rate': 0 if self.n_episodes == 0 else 100 * self.n_timeouts / self.n_episodes
+                         'timeout_rate': 0 if self.n_episodes == 0 else 100 * self.n_timeouts / self.n_episodes,
+                         'shortest_path_length': None if self.n_episodes == 0 else self.spl
                          }
                          
             info = info_dict
@@ -1369,11 +1402,11 @@ class CrowdSim(gym.Env):
                     for human in humans:
                         ax.add_artist(human)
                 # add time annotation
-                global_time = k * self.time_step
-                if global_time % 4 == 0 or k == len(self.states) - 1:
+                episode_time = k * self.time_step
+                if episode_time % 4 == 0 or k == len(self.states) - 1:
                     agents = humans + [robot]
                     times = [plt.text(agents[i].center[0] - x_offset, agents[i].center[1] - y_offset,
-                                      '{:.1f}'.format(global_time),
+                                      '{:.1f}'.format(episode_time),
                                       color='black', fontsize=14) for i in range(self.human_num + 1)]
                     for time in times:
                         ax.add_artist(time)

@@ -111,13 +111,13 @@ class SimpleNavigation():
             freespace_reward = None      
             slack_reward = None
             energy_cost = None
-            params['nn_layers'] = nn_layers = [64, 64]
+            params['nn_layers'] = nn_layers = [256, 128, 64]
             gamma = 0.99
             decay = 0
             batch_norm = 'no'
-            params['learning_trials'] = learning_trials = 500000
-            params['learning_rate'] = learning_rate = 0.0005
-            params['arch'] = 'gibson_benchmark_invisible_robot_discomfort_ttc'
+            params['learning_trials'] = learning_trials = 1500000
+            params['learning_rate'] = learning_rate = 0.0001
+            params['arch'] = 'gibson_benchmark_visible_robot_no_static_obstacles'
 
         # configure policy
         policy = policy_factory[args.policy]()
@@ -219,7 +219,7 @@ class SimpleNavigation():
                     n_episodes += 1
                     if n_episodes % 10 == 0:
                     #del info['terminal_observation']
-                        print([(key, trunc(info[0][key], 1)) for key in ['success_rate', 'collision_rate', 'timeouts', 'personal_space_violations']])
+                        print([(key, trunc(info[0][key], 1)) for key in ['success_rate', 'collision_rate', 'timeouts', 'personal_space_violations', 'shortest_path_length']])
                     obs = env.reset()
                     
             #env.close()
@@ -238,7 +238,7 @@ class SimpleNavigation():
                     n_episodes += 1
                     #del info['terminal_observation']
                     if n_episodes % 2 == 0:
-                        print("episodes:", n_episodes, [(key, trunc(info[0][key], 1)) for key in ['success_rate', 'ped_collision_rate', 'collision_rate', 'timeout_rate', 'personal_space_violations']])
+                        print("episodes:", n_episodes, [(key, trunc(info[0][key], 1)) for key in ['success_rate', 'ped_collision_rate', 'collision_rate', 'timeout_rate', 'personal_space_violations', 'shortest_path_length']])
                     obs = env.reset()
 
             env.close()
@@ -262,7 +262,7 @@ class SimpleNavigation():
             if done:
                 n_episodes += 1
                 if n_episodes % 100 == 0:
-                    print("episodes:", n_episodes, [(key, trunc(info[0][key], 1)) for key in ['success_rate', 'ped_collision_rate', 'collision_rate', 'timeout_rate', 'personal_space_violations']])
+                    print("episodes:", n_episodes, [(key, trunc(info[0][key], 1)) for key in ['success_rate', 'ped_collision_rate', 'collision_rate', 'timeout_rate', 'personal_space_violations', 'shortest_path_length']])
                     obs = env.reset()
         env.close()
     
@@ -414,7 +414,7 @@ if __name__ == '__main__':
     
     class CustomPolicy(FeedForwardPolicy):
         def __init__(self, *args, **kwargs):
-            super(CustomPolicy, self).__init__(*args, layers=[64, 64], layer_norm=False, feature_extraction="mlp", **kwargs)
+            super(CustomPolicy, self).__init__(*args, layers=[256, 128, 64], layer_norm=False, feature_extraction="mlp", **kwargs)
 
     if NN_TUNING:
         param_list = []
