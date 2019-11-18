@@ -766,7 +766,7 @@ class CrowdSim(gym.Env):
                 sign = -1
             else:
                 sign = 1
-             
+
             py = sign * self.square_width * 0.3 * (1.0 + random.uniform(-0.2, 0.2))# * np.random.uniform(0.8, 1.2)
             
             theta = np.random.random() * 2 * np.pi
