@@ -104,6 +104,7 @@ class SimpleNavigation():
             collision_penalty = None
             discomfort_dist = None
             discomfort_penalty_factor = None
+            lookahead_interval = None
             safety_penalty_factor = None
             safe_obstacle_distance = None
             time_to_collision_penalty = None
@@ -117,7 +118,6 @@ class SimpleNavigation():
             batch_norm = 'no'
             params['learning_trials'] = learning_trials = 1500000
             params['learning_rate'] = learning_rate = 0.0001
-            params['arch'] = 'gibson_benchmark_visible_robot_no_static_obstacles'
 
         # configure policy
         policy = policy_factory[args.policy]()
@@ -145,6 +145,8 @@ class SimpleNavigation():
         self.human_num = env_config.getint('sim', 'human_num')
                 
         params['n_peds'] = self.human_num
+        params['lookahead_interval'] = env_config.getfloat('reward', 'lookahead_interval')
+
         
         if args.n_sonar_sensors is not None:
             self.n_sonar_sensors = args.n_sonar_sensors
@@ -154,7 +156,7 @@ class SimpleNavigation():
         params['n_sonar_sensors'] = self.n_sonar_sensors
                 
         env = gym.make('CrowdSim-v0', human_num=self.human_num, n_sonar_sensors=self.n_sonar_sensors, success_reward=success_reward, collision_penalty=collision_penalty, time_to_collision_penalty=time_to_collision_penalty,
-                       discomfort_dist=discomfort_dist, discomfort_penalty_factor=discomfort_penalty_factor, potential_reward_weight=potential_reward_weight,
+                       discomfort_dist=discomfort_dist, discomfort_penalty_factor=discomfort_penalty_factor, lookahead_interval=lookahead_interval, potential_reward_weight=potential_reward_weight,
                        slack_reward=slack_reward, energy_cost=energy_cost, safe_obstacle_distance=safe_obstacle_distance, safety_penalty_factor=safety_penalty_factor, freespace_reward=freespace_reward,
                        visualize=visualize, show_sensors=show_sensors, testing=args.test, create_obstacles=args.create_obstacles, create_walls=args.create_walls, display_fps=args.display_fps)
         

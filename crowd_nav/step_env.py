@@ -66,8 +66,8 @@ def main():
     env_config = configparser.RawConfigParser()
     env_config.read(args.env_config)
     
-    env = gym.make('CrowdSim-v0', success_reward=None, collision_penalty=None, time_to_collision_penalty=None, discomfort_dist=None,
-                       discomfort_penalty_factor=None, potential_reward_weight=None, slack_reward=None, energy_cost=None,
+    env = gym.make('CrowdSim-v0', success_reward=None, collision_penalty=None, discomfort_dist=None,
+                       discomfort_penalty_factor=None, potential_reward_weight=None, lookahead_interval=None, slack_reward=None, energy_cost=None,
                        visualize=args.visualize, show_sensors=args.show_sensors, create_walls=args.create_walls, create_obstacles=args.create_obstacles)
 
     print("Gym environment created.")

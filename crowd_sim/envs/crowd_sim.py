@@ -46,7 +46,7 @@ class CrowdSim(gym.Env):
     metadata = {'render.modes': ['human']}
 
     def __init__(self, human_num=None, n_sonar_sensors=None, success_reward=None, collision_penalty=None, time_to_collision_penalty=None, discomfort_dist=None,
-                       discomfort_penalty_factor=None, potential_reward_weight=None, slack_reward=None,
+                       discomfort_penalty_factor=None, lookahead_interval=None, potential_reward_weight=None, slack_reward=None,
                        energy_cost=None, safe_obstacle_distance=None, safety_penalty_factor=None, freespace_reward=None, visualize=None,
                        show_sensors=None, expert_policy=False, testing=False, create_walls=False, create_obstacles=False, display_fps=1000):
         """
@@ -73,9 +73,9 @@ class CrowdSim(gym.Env):
         self.energy_cost = energy_cost or None
         self.safe_obstacle_distance = safe_obstacle_distance or None
         self.safety_penalty_factor = safety_penalty_factor or None  
-        self.freespace_reward = freespace_reward or None        
+        self.freespace_reward = freespace_reward or None
+        self.lookahead_interval = lookahead_interval or None    
 
-        self.lookahead_interval = 3.0
         # simulation configuration
         self.config = None
         self.case_capacity = None
@@ -199,12 +199,12 @@ class CrowdSim(gym.Env):
         self.safety_penalty_factor = config.getfloat('reward', 'safety_penalty_factor')
         self.safe_obstacle_distance = config.getfloat('reward', 'safe_obstacle_distance')
         self.freespace_reward = config.getfloat('reward', 'freespace_reward')
+        self.lookahead_interval = config.getfloat('reward', 'lookahead_interval')
         self.slack_reward = config.getfloat('reward', 'slack_reward')
         self.energy_cost = config.getfloat('reward', 'energy_cost')
         self.position_noise = config.getfloat('humans', 'position_noise')
         self.velocity_noise = config.getfloat('humans', 'velocity_noise')        
                 
-        self.lookahead_interval = config.getfloat('reward', 'lookahead_interval')        
         self.visualize = self.visualize or config.getboolean('env', 'visualize')
         self.show_sensors = self.show_sensors or config.getboolean('env', 'show_sensors')
         self.display_fps = self.display_fps or config.getfloat('env', 'display_fps')
@@ -763,19 +763,19 @@ class CrowdSim(gym.Env):
             else:
                 sign = 1
                 
-            px = sign * np.random.random() * self.square_width * 0.2
+            px = np.random.random() * self.square_width * 0.2
              
             if np.random.random() > 0.5:
                 sign = -1
             else:
                 sign = 1
 
-            py = sign * self.square_width * 0.3 * (1.0 + random.uniform(-0.2, 0.2))# * np.random.uniform(0.8, 1.2)
+            py = sign * self.square_width * 0.3 * (1.0 + random.uniform(-0.2, 0.2))
             
             theta = np.random.random() * 2 * np.pi
              
-            gx = sign * np.random.random() * self.square_width * 0.2
-            gy = -sign * self.square_width * 0.3 * (1.0 + random.uniform(-0.2, 0.2))  #* np.random.uniform(0.8, 1.2)
+            gx = np.random.random() * self.square_width * 0.2
+            gy = -sign * self.square_width * 0.3 * (1.0 + random.uniform(-0.2, 0.2))
             
             self.episode_shortest_distance = np.sqrt((gx - px)**2 + (gy - py)**2)
 
@@ -1190,7 +1190,7 @@ class CrowdSim(gym.Env):
                          'shortest_path_length': None if self.n_episodes == 0 else self.spl
                          }
                          
-            info = info_dict
+        info = info_dict
 
         return reward, done, info
     
