@@ -30,6 +30,7 @@ def main():
     parser.add_argument('--hallway', default=False, action='store_true')
     parser.add_argument('--video_file', type=str, default=None)
     parser.add_argument('--traj', default=False, action='store_true')
+    parser.add_argument('--fps', type=float, default=np.Inf)
 
     args = parser.parse_args()
 
@@ -114,7 +115,7 @@ def main():
         while not done:
             action = robot.act(ob, create_obstacles=args.create_obstacles, obstacles=obstacles)
             state, ob, _, done, info = env.step(action, update=True, debug=True, display_fps=1000)
-            #time.sleep(0.01)
+            time.sleep(1.0/args.fps)
 
         n_episodes += 1
         
