@@ -1142,12 +1142,12 @@ class CrowdSim(gym.Env):
                 min_obstacle_distance = min(sensor_readings[np.where(sensor_readings >= 0)])
                 min_obstacle_distance *= self.max_pygame_sensor_range / self.scale_factor
 
-                #if min_obstacle_distance < self.safe_obstacle_distance:
-                #obstacle_cost = (min_obstacle_distance - self.safe_obstacle_distance) * self.safety_penalty_factor * self.time_step
-                obstacle_cost = 1.0 / (max(0.0, min_obstacle_distance - self.safe_obstacle_distance - self.robot.radius) + 0.001)
-                obstacle_cost *= self.safety_penalty_factor * self.time_step
-                #else:
-                #    obstacle_cost = 0.0
+                if min_obstacle_distance < self.safe_obstacle_distance:
+                    obstacle_cost = (min_obstacle_distance - self.safe_obstacle_distance) * self.safety_penalty_factor * self.time_step
+                    #obstacle_cost = 1.0 / (max(0.0, min_obstacle_distance - self.safe_obstacle_distance - self.robot.radius) + 0.001)
+                    obstacle_cost *= self.safety_penalty_factor * self.time_step
+                else:
+                    obstacle_cost = 0.0
                 
                 #print(min_obstacle_distance, obstacle_cost)
                    
