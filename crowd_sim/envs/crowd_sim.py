@@ -369,9 +369,13 @@ class CrowdSim(gym.Env):
             for i in range(human_num):
                 self.humans.append(self.generate_circle_crossing_human())
         elif rule == 'hallway_crossing':
-            self.humans = []
-            for i in range(human_num):
-                self.humans.append(self.generate_hallway_crossing_human())
+            if self.n_episodes == 0:
+                self.humans = []
+                for i in range(human_num):
+                    self.humans.append(self.generate_hallway_crossing_human())
+            else:
+                self.update_hallway_crossing_human()
+                
         elif rule == 'mixed':
             # mix different raining simulation with certain distribution
             static_human_num = {0: 0.05, 1: 0.2, 2: 0.2, 3: 0.3, 4: 0.1, 5: 0.15}
@@ -492,10 +496,12 @@ class CrowdSim(gym.Env):
         human = Human(self.config, 'humans')
         if self.randomize_attributes:
             human.sample_random_attributes()
+            
         if np.random.random() > 0.5:
             sign = -1
         else:
             sign = 1
+        
         while True:
             px = sign * self.square_width * 0.3 * (1.0 + random.uniform(-0.2, 0.2))
             py = (np.random.random() - 0.5) * self.hallway_width
@@ -510,6 +516,7 @@ class CrowdSim(gym.Env):
 #                     break
             if not collide:
                 break
+
         while True:
             gx = -sign * self.square_width * 0.3 * (1.0 + random.uniform(-0.2, 0.2))
             gy = (np.random.random() - 0.5) * self.hallway_width
@@ -525,7 +532,36 @@ class CrowdSim(gym.Env):
 #                     break
             if not collide:
                 break
+            
         human.set(px, py, 0, gx, gy, 0, 0, 0, 0)
+        
+        return human
+    
+    def update_hallway_crossing_human(self):
+        for human in self.humans:
+            if np.random.random() > 0.5:
+                sign = -1
+            else:
+                sign = 1
+            
+            while True:
+                gx = -sign * self.square_width * 0.3 * (1.0 + random.uniform(-0.2, 0.2))
+                gy = (np.random.random() - 0.5) * self.hallway_width
+    
+    #            gx = (np.random.random() - 0.5) * self.square_width
+    #            gy = (np.random.random() - 0.5) * self.square_width
+    
+                collide = False
+    #             for agent in [self.robot] + self.humans:
+    #                 #if norm((gx - agent.gx, gy - agent.gy)) < human.radius + agent.radius + self.discomfort_dist:
+    #                 if norm((gx - agent.gx, gy - agent.gy)) < human.radius:
+    #                     collide = True
+    #                     break
+                if not collide:
+                    break
+            
+            human.set(human.px, human.py, 0, gx, gy, human.vx, human.vy, 0, 0)
+        
         return human
 
 #     def get_human_times(self):
@@ -1066,6 +1102,20 @@ class CrowdSim(gym.Env):
         reward = 0
         
         info_dict = OrderedDict()
+        
+        if dmin < self.discomfort_dist:
+            # penalize agent for getting too close
+            # adjust the reward based on FPS
+            self.n_personal_space_violations += 1 * (self.discomfort_dist - dmin) / self.discomfort_dist * self.time_step
+            reward = (dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
+            info = Danger(dmin)
+            
+        if velocity_dmin < self.discomfort_dist:
+            # penalize agent for attempting to cut off a pedestrian
+            # adjust the reward based on FPS
+            self.n_personal_space_violations += 1 * (self.discomfort_dist - velocity_dmin) / self.discomfort_dist * self.time_step
+            reward = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
+            info = Danger(velocity_dmin)
                 
         if self.episode_time >= self.time_limit - 1:
             self.n_timeouts += 1
@@ -1091,20 +1141,6 @@ class CrowdSim(gym.Env):
             done = True
             info = ReachGoal()
             self.success = True
-        elif dmin < self.discomfort_dist:
-            # penalize agent for getting too close
-            # adjust the reward based on FPS
-            self.n_personal_space_violations += 1 * (self.discomfort_dist - dmin) / self.discomfort_dist * self.time_step
-            reward = (dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
-            done = False
-            info = Danger(dmin)
-        elif velocity_dmin < self.discomfort_dist:
-            # penalize agent for getting too close
-            # adjust the reward based on FPS
-            self.n_personal_space_violations += 1
-            reward = (velocity_dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
-            done = False
-            info = Danger(velocity_dmin)
         else:
             done = False
             info = Nothing()

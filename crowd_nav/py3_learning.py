@@ -118,6 +118,7 @@ class SimpleNavigation():
             batch_norm = 'no'
             params['learning_trials'] = learning_trials = 1500000
             params['learning_rate'] = learning_rate = 0.0001
+            params['test'] = 'fixed_attributes_robot_visible'
 
         # configure policy
         policy = policy_factory[args.policy]()
@@ -232,7 +233,7 @@ class SimpleNavigation():
             model = SAC.load(args.weights)
             obs = env.reset()
             n_episodes = 0
-            n_test_episodes = 10000
+            n_test_episodes = 100
             while n_episodes < n_test_episodes:
                 action, _states = model.predict(obs)
                 obs, rewards, done, info = env.step(action)
