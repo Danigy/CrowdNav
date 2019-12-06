@@ -119,7 +119,7 @@ def main():
 
         n_episodes += 1
         
-        print("episodes:", n_episodes, [(key, trunc(info[key], 2)) for key in ['success_rate', 'ped_collision_rate', 'collision_rate', 'timeout_rate', 'personal_space_violations', 'shortest_path_length']])
+        print("episodes:", n_episodes, [(key, trunc(info[key], 2)) for key in ['success_rate', 'ped_collision_rate', 'ped_hits_robot_rate', 'collision_rate', 'timeout_rate', 'personal_space_violations', 'shortest_path_length']])
         #print(info)
             
         obs = env.reset()
