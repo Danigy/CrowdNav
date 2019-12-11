@@ -59,7 +59,7 @@ class CrowdSim(gym.Env):
         self.time_limit = None
         self.time_step = None
         self.robot = None
-        self.humans = None
+        self.humans = []
         self.episode_time = None
         self.human_times = None
         
@@ -828,11 +828,12 @@ class CrowdSim(gym.Env):
 
             if self.case_counter[phase] >= 0:
                 np.random.seed(counter_offset[phase] + self.case_counter[phase])
-                if phase in ['train', 'val']:
-                    human_num = self.human_num if self.robot.policy.multiagent_training else 1
-                    self.generate_random_human_position(human_num=human_num, rule=self.train_val_sim)
-                else:
-                    self.generate_random_human_position(human_num=self.human_num, rule=self.test_sim)
+                if self.human_num > 0:
+                    if phase in ['train', 'val']:
+                        human_num = self.human_num if self.robot.policy.multiagent_training else 1
+                        self.generate_random_human_position(human_num=human_num, rule=self.train_val_sim)
+                    else:
+                        self.generate_random_human_position(human_num=self.human_num, rule=self.test_sim)
                 # case_counter is always between 0 and case_size[phase]
                 self.case_counter[phase] = (self.case_counter[phase] + 1) % self.case_size[phase]
             else:
@@ -899,7 +900,7 @@ class CrowdSim(gym.Env):
             # Only allow forward motion and rotations
             #action = ActionRot(((action[0] + 1.0) / 2.0) * self.robot.v_pref, action[1])
             scaled_action = ActionRot(((action[0] + 1.0) / 2.0) * self.robot.v_pref, action[1])
-            
+                        
         self.n_steps += 1
 
         # Compute the next human actions from the current observations
@@ -1051,6 +1052,9 @@ class CrowdSim(gym.Env):
 
             self.clock.tick(self.display_fps)
             
+        #if done:
+        #    print(info)
+            
         if debug or self.expert_policy:
             return state, ob, reward, done, info
         else:
@@ -1122,6 +1126,7 @@ class CrowdSim(gym.Env):
             reward = 0
             done = True
             info = Timeout()
+            
         elif self.crashed or self.ped_collision:
             # For pedestrians, only blame the robot if it is moving faster than a lower threshold
             if self.ped_collision:
@@ -1135,12 +1140,15 @@ class CrowdSim(gym.Env):
                 reward = self.collision_penalty
             done = True
             info = Collision()
+            
         elif reaching_goal:
+            print("SUCCESS!")
             self.n_successes += 1
             reward = self.success_reward
             done = True
             info = ReachGoal()
             self.success = True
+            
         else:
             done = False
             info = Nothing()
@@ -1199,8 +1207,8 @@ class CrowdSim(gym.Env):
             new_normalized_potential = current_potential / self.initial_potential
             potential_reward = self.normalized_potential - new_normalized_potential
             
-            potent = potential_reward * self.potential_reward_weight
-            #reward += potential_reward * self.potential_reward_weight / self.robot.v_pref
+            #print(self.initial_potential, current_potential, self.normalized_potential, new_normalized_potential, potential_reward)
+
             reward += potential_reward * self.potential_reward_weight
             
             #print(obstacle_cost, potential_reward * self.potential_reward_weight)
@@ -1227,7 +1235,7 @@ class CrowdSim(gym.Env):
                          }
                          
         info = info_dict
-
+        
         return reward, done, info
     
     def get_potential(self):
