@@ -10,6 +10,7 @@ from crowd_nav.utils.explorer import Explorer
 from crowd_nav.policy.policy_factory import policy_factory
 from crowd_sim.envs.utils.robot import Robot
 from crowd_sim.envs.policy.orca import ORCA
+from crowd_sim.envs.utils.action import ActionXY, ActionRot
 
 def main():
     parser = argparse.ArgumentParser('Parse configuration file')
@@ -30,7 +31,7 @@ def main():
     parser.add_argument('--hallway', default=False, action='store_true')
     parser.add_argument('--video_file', type=str, default=None)
     parser.add_argument('--traj', default=False, action='store_true')
-    parser.add_argument('--fps', type=float, default=np.Inf)
+    parser.add_argument('--fps', type=float, default=1000)
 
     args = parser.parse_args()
 
@@ -114,7 +115,7 @@ def main():
         
         while not done:
             action = robot.act(ob, create_obstacles=args.create_obstacles, obstacles=obstacles)
-            state, ob, _, done, info = env.step(action, update=True, debug=True, display_fps=1000)
+            state, ob, _, done, info = env.step(action, update=True, debug=True)
             time.sleep(1.0/args.fps)
 
         n_episodes += 1
