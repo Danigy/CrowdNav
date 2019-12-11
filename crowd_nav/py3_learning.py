@@ -59,7 +59,6 @@ class SimpleNavigation():
         
         if NN_TUNING:
             gamma = 0.9
-            params['decay'] = decay = 0
             params['batch_norm'] = 'no'
             success_reward = None
             potential_reward_weight = None
@@ -95,7 +94,6 @@ class SimpleNavigation():
             if not NN_TUNING:
                 nn_layers = [256, 128, 64, 32]
                 gamma = 0.99
-                decay = 0
                 batch_norm = 'no'
         else:
             params = dict()
@@ -114,11 +112,10 @@ class SimpleNavigation():
             energy_cost = None
             params['nn_layers'] = nn_layers = [256, 128, 64]
             gamma = 0.99
-            decay = 0
             batch_norm = 'no'
             params['learning_trials'] = learning_trials = 1500000
             params['learning_rate'] = learning_rate = 0.0001
-            params['test'] = 'fixed_attributes_robot_invisible_no_ttc'
+            params['test'] = 'allow_backward_motion'
 
         # configure policy
         policy = policy_factory[args.policy]()
@@ -148,7 +145,6 @@ class SimpleNavigation():
         params['n_peds'] = self.human_num
         params['lookahead_interval'] = env_config.getfloat('reward', 'lookahead_interval')
 
-        
         if args.n_sonar_sensors is not None:
             self.n_sonar_sensors = args.n_sonar_sensors
         else:
@@ -195,6 +191,7 @@ class SimpleNavigation():
         action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=float(0.5) * np.ones(n_actions))
 
         #model = DDPG(DPPG_MlpPolicy, env, verbose=1, tensorboard_log=tb_log_dir, param_noise=param_noise, action_noise=action_noise, buffer_size=max(50000, min(1000000, int(0.1 * learning_trials))))
+
         model = SAC(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate, buffer_size=max(50000, min(1000000, int(0.1 * learning_trials))))
         #model = PPO2(CustomPolicy, env, verbose=1, tensorboard_log=tb_log_dir, learning_rate=learning_rate, buffer_size=100000)
 
@@ -423,7 +420,6 @@ if __name__ == '__main__':
         nn_architectures = [[64, 64], [512, 256, 128], [256, 128, 64]]
         #nn_architectures = [[64, 64, 64], [1024, 512, 256], [512, 256, 128, 64]]
         gammas = [0.99, 0.95]
-        #decays = [0.0]
         for gamma in gammas:
             for nn_layers in nn_architectures:
                 params = {
