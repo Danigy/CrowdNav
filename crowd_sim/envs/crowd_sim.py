@@ -759,7 +759,7 @@ class CrowdSim(gym.Env):
         
         self.spl = self.spl_sum / self.n_episodes
         
-    def _reset(self, phase='test', test_case=None, debug=False):
+    def reset(self, phase='test', test_case=None, debug=False):
         """
         Set px, py, gx, gy, vx, vy, theta for robot and humans
         :return:
@@ -884,7 +884,7 @@ class CrowdSim(gym.Env):
     def onestep_lookahead(self, action, debug=True, visualize=None, display_fps=None):
         return self.step(action, update=False, debug=debug, visualize=None, display_fps=None)
 
-    def _step(self, action, update=True, debug=False, visualize=None, display_fps=None):
+    def step(self, action, update=True, debug=False, visualize=None, display_fps=None):
         """
         Compute actions for all agents, detect collision, update environment and return (ob, reward, done, info)
 
