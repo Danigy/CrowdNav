@@ -22,6 +22,32 @@ from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.trajectories import trajectory
 from tf_agents.utils import common
 
+#@test {"skip": true}
+def compute_avg_return(environment, policy, num_episodes=10):
+
+  total_return = 0.0
+  for _ in range(num_episodes):
+
+    time_step = environment.reset()
+    episode_return = 0.0
+
+    while not time_step.is_last():
+      action_step = policy.action(time_step)
+      time_step = environment.step(action_step.action)
+      env.render()
+      episode_return += time_step.reward
+    total_return += episode_return
+
+    avg_return = total_return / num_episodes
+    print("AVE RETURN: ", avg_return.numpy()[0])
+    
+    time.sleep(0.05)
+    
+  return avg_return.numpy()[0]
+
+# See also the metrics module for standard implementations of different metrics.
+# https://github.com/tensorflow/agents/tree/master/tf_agents/metrics
+
 env_name = 'CartPole-v0'
 env = suite_gym.load(env_name)
 
@@ -44,7 +70,7 @@ batch_size = 64  # @param {type:"integer"}
 learning_rate = 1e-3  # @param {type:"number"}
 log_interval = 200  # @param {type:"integer"}
 
-num_eval_episodes = 10  # @param {type:"integer"}
+num_eval_episodes = 100  # @param {type:"integer"}
 eval_interval = 1000  # @param {type:"integer"}
 
 print('Observation Spec:')
@@ -96,13 +122,16 @@ time_step = example_environment.reset()
 
 n = 0
 
-while n < 10:
+#compute_avg_return(eval_env, random_policy, num_eval_episodes)
+
+
+while n < 1000:
     #random_policy.action(time_step)
     env.step(env.action_space.sample())
     env.render()
     n += 1
-    print("Step: ", n)
-    time.sleep(1.0)
+    #print("Step: ", n)
+    time.sleep(0.025)
 
 
 
