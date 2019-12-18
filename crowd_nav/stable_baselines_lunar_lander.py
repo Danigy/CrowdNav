@@ -20,10 +20,10 @@ if rl_algorithm == "sac":
 elif rl_algorithm == "ppo2":
     model = PPO2(PPO2_MlpPolicy, env, verbose=1, tensorboard_log="./tensorboard_logs/stable_baselines")
     
-model.learn(total_timesteps=500000, log_interval=10)
-model.save(model_name)
+#model.learn(total_timesteps=500000, log_interval=10)
+#model.save(model_name)
 
-del model # remove to demonstrate saving and loading
+#del model # remove to demonstrate saving and loading
 
 if rl_algorithm == "sac":
     model = SAC.load(model_name)
@@ -47,5 +47,5 @@ while n_episodes < 100:
         n_episodes += 1
         ave_episode_reward = total_episode_reward / n_episodes
         print("Episode: " , n_episodes, " Ave Reward: ", ave_episode_reward)
-    #env.render()
+    env.render()
     
