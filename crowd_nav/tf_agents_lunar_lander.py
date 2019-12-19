@@ -43,7 +43,7 @@ import tensorflow as tf
 from tf_agents.agents.ddpg import critic_network
 from tf_agents.agents.sac import sac_agent
 from tf_agents.drivers import dynamic_step_driver
-from tf_agents.environments import suite_mujoco
+from tf_agents.environments import suite_gym
 from tf_agents.environments import tf_py_environment
 from tf_agents.eval import metric_utils
 from tf_agents.metrics import py_metrics
@@ -84,24 +84,24 @@ def normal_projection_net(action_spec,
 @gin.configurable
 def train_eval(
     root_dir,
-    env_name='HalfCheetah-v2',
+    env_name='LunarLanderContinuous-v2',
     eval_env_name=None,
-    env_load_fn=suite_mujoco.load,
-    num_iterations=1000000,
-    actor_fc_layers=(256, 256),
+    env_load_fn=suite_gym.load,
+    num_iterations=500000,
+    actor_fc_layers=(64, 64),
     critic_obs_fc_layers=None,
     critic_action_fc_layers=None,
-    critic_joint_fc_layers=(256, 256),
+    critic_joint_fc_layers=(64, 64),
     # Params for collect
-    initial_collect_steps=10000,
+    initial_collect_steps=100,
     collect_steps_per_iteration=1,
-    replay_buffer_capacity=1000000,
+    replay_buffer_capacity=50000,
     # Params for target update
     target_update_tau=0.005,
     target_update_period=1,
     # Params for train
     train_steps_per_iteration=1,
-    batch_size=256,
+    batch_size=64,
     actor_learning_rate=3e-4,
     critic_learning_rate=3e-4,
     alpha_learning_rate=3e-4,
@@ -111,7 +111,7 @@ def train_eval(
     gradient_clipping=None,
     # Params for eval
     num_eval_episodes=30,
-    eval_interval=10000,
+    eval_interval=1000,
     # Params for summaries and logging
     train_checkpoint_interval=10000,
     policy_checkpoint_interval=5000,
