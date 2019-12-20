@@ -57,16 +57,17 @@ from tf_agents.policies import random_tf_policy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.utils import common
 
+#import crowd_sim
+
 
 flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
                     'Root directory for writing logs/summaries/checkpoints.')
 flags.DEFINE_multi_string('gin_file', None,
                           'Path to the gin config files.')
 flags.DEFINE_multi_string('gin_param', None, 'Gin binding to pass through.')
-flags.DEFINE_boolean('eval_only', False,
-                     'Whether to run evaluation only on trained checkpoints')
 
 FLAGS = flags.FLAGS
+
 
 @gin.configurable
 def normal_projection_net(action_spec,
@@ -85,7 +86,7 @@ def normal_projection_net(action_spec,
 @gin.configurable
 def train_eval(
     root_dir,
-    env_name='LunarLanderContinuous-v2',
+    env_name='CrowdSim-v0',
     eval_env_name=None,
     env_load_fn=suite_gym.load,
     num_iterations=500000,
@@ -113,7 +114,6 @@ def train_eval(
     # Params for eval
     num_eval_episodes=100,
     eval_interval=1000,
-    eval_only=False,
     # Params for summaries and logging
     train_checkpoint_interval=10000,
     policy_checkpoint_interval=5000,
@@ -261,39 +261,27 @@ def train_eval(
       train_checkpointer.initialize_or_restore(sess)
       rb_checkpointer.initialize_or_restore(sess)
       
-#       if True:
-#         metric_utils.compute_summaries(
-#             eval_metrics,
-#             eval_py_env,
-#             eval_py_policy,
-#             num_episodes=num_eval_episodes,
-#             global_step=0,
-#             callback=eval_metrics_callback,
-#             tf_summaries=False,
-#             log=True,
-#         )
-#         # episodes = eval_py_env.get_stored_episodes()
-#         # episodes = [episode for sublist in episodes for episode in sublist][:num_eval_episodes]
-#         # metrics = episode_utils.get_metrics(episodes)
-#         # for key in sorted(metrics.keys()):
-#         #     print(key, ':', metrics[key])
-# 
-#         # save_path = os.path.join(eval_dir, 'episodes.pkl')
-#         # episode_utils.save(episodes, save_path)
-#         print('EVAL DONE')
-#         return
-
-      if eval_only:
+      if True:
         metric_utils.compute_summaries(
-          eval_metrics,
-          eval_py_env,
-          eval_py_policy,
-          num_episodes=num_eval_episodes,
-          global_step=0,
-          callback=eval_metrics_callback,
-          tf_summaries=False,
-          log=True,
+            eval_metrics,
+            eval_py_env,
+            eval_py_policy,
+            num_episodes=num_eval_episodes,
+            global_step=0,
+            callback=eval_metrics_callback,
+            tf_summaries=False,
+            log=True,
         )
+        # episodes = eval_py_env.get_stored_episodes()
+        # episodes = [episode for sublist in episodes for episode in sublist][:num_eval_episodes]
+        # metrics = episode_utils.get_metrics(episodes)
+        # for key in sorted(metrics.keys()):
+        #     print(key, ':', metrics[key])
+
+        # save_path = os.path.join(eval_dir, 'episodes.pkl')
+        # episode_utils.save(episodes, save_path)
+        print('EVAL DONE')
+        return
 
       # Initialize training.
       sess.run(dataset_iterator.initializer)
