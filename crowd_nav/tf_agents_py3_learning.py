@@ -1,34 +1,26 @@
-# coding=utf-8
-# Copyright 2018 The TF-Agents Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-r"""Train and Eval SAC.
-
-To run:
-
-```bash
-tensorboard --logdir $HOME/tmp/sac_v1/gym/HalfCheetah-v2/ --port 2223 &
-
-python tf_agents/agents/sac/examples/v1/train_eval.py \
-  --root_dir=$HOME/tmp/sac_v1/gym/HalfCheetah-v2/ \
-  --alsologtostderr
-```
-"""
+#!/usr/bin/env python
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import numpy as np
+import random
+import os.path
+import sys
+import datetime
+import tensorflow as tf
+
+from collections import OrderedDict
+import argparse
+import configparser
+import json
+
+import gym
+import crowd_sim
+from crowd_sim.envs.utils.info import *
+from crowd_sim.envs.utils.robot import Robot
+from crowd_nav.policy.policy_factory import policy_factory
 
 import os
 import time
@@ -38,7 +30,6 @@ from absl import flags
 from absl import logging
 
 import gin
-import tensorflow as tf
 
 from tf_agents.agents.ddpg import critic_network
 from tf_agents.agents.sac import sac_agent
@@ -66,6 +57,146 @@ flags.DEFINE_multi_string('gin_param', None, 'Gin binding to pass through.')
 
 FLAGS = flags.FLAGS
 
+ENV_NAME = 'CrowdSim-v0'
+                
+TUNING = False
+NN_TUNING = False
+
+class SimpleNavigation():
+    def __init__(self, argv, params):
+        parser = argparse.ArgumentParser()
+        parser.add_argument('-t', '--test', default=False, action='store_true')
+        parser.add_argument('-w', '--weights', type=pathstr, required=False, help='Path to weights file')
+        parser.add_argument('-d', '--visualize', default=False, action='store_true')
+        parser.add_argument('-s', '--show_sensors', default=False, action='store_true')
+        parser.add_argument('-o', '--create_obstacles', type=str2bool, default=False, required=False)
+        parser.add_argument('--create_walls', type=str2bool, default=False, required=False)
+        parser.add_argument('-n', '--n_sonar_sensors', type=int, required=False)
+        parser.add_argument('-p', '--n_peds', type=int, required=False)
+        parser.add_argument('--env_config', type=str, default='configs/env.config')
+        parser.add_argument('--policy', type=str, default='multi_human_rl')
+        parser.add_argument('--policy_config', type=str, default='configs/policy.config')
+        parser.add_argument('--train_config', type=str, default='configs/train.config')
+        parser.add_argument('--pre_train', default=False, action='store_true')
+        parser.add_argument('--display_fps', type=int, required=False, default=1000)
+        parser.add_argument('--root_dir', type=pathstr, required=False, help='Path to checkpoint directory')
+
+        args = parser.parse_args()
+        
+        if NN_TUNING:
+            gamma = 0.9
+            params['batch_norm'] = 'no'
+            success_reward = None
+            potential_reward_weight = None
+            collision_penalty = None
+            time_to_collision_penalty = None
+            personal_space_penalty = None
+            safe_obstacle_distance = None
+            safety_penalty_factor = None
+            slack_reward = None
+            energy_cost = None
+            slack_reward = None
+            learning_rate = 0.001
+        elif TUNING:
+            success_reward = None
+            potential_reward_weight = None
+            collision_penalty = None
+            discomfort_dist = None            
+            discomfort_penalty_factor = params['discomfort']
+            safety_penalty_factor = params['safety']
+            freespace_reward = params['freespace']
+            safe_obstacle_distance = None
+            time_to_collision_penalty = None
+            personal_space_penalty = None          
+            slack_reward = None
+            energy_cost = None
+
+            params['learning_trials'] = learning_trials = 1500000
+            params['learning_rate'] = learning_rate = 0.0005
+            
+            #personal_space_cost = 0.0
+            #slack_reward = -0.01
+            #learning_rate = 0.001
+            if not NN_TUNING:
+                nn_layers = [256, 128, 64, 32]
+                gamma = 0.99
+                batch_norm = 'no'
+        else:
+            params = dict()
+            success_reward = None
+            potential_reward_weight = None
+            collision_penalty = None
+            discomfort_dist = None
+            discomfort_penalty_factor = None
+            lookahead_interval = None
+            safety_penalty_factor = None
+            safe_obstacle_distance = None
+            time_to_collision_penalty = None
+            personal_space_penalty = None
+            freespace_reward = None      
+            slack_reward = None
+            energy_cost = None
+            params['nn_layers'] = nn_layers = [256, 128, 64]
+            gamma = 0.99
+            batch_norm = 'no'
+            params['learning_trials'] = learning_trials = 1500000
+            params['learning_rate'] = learning_rate = 0.0001
+            params['test'] = 'allow_backward_motion'
+
+        # configure policy
+        policy = policy_factory[args.policy]()
+        if not policy.trainable:
+            parser.error('Policy has to be trainable')
+        if args.policy_config is None:
+            parser.error('Policy config has to be specified for a trainable network')
+        policy_config = configparser.RawConfigParser()
+        policy_config.read(args.policy_config)
+        policy.configure(policy_config)
+
+        # configure environment
+        env_config = configparser.RawConfigParser()
+        env_config.read(args.env_config)
+        
+        visualize = True if args.visualize else None
+        show_sensors = True if args.show_sensors else None
+        
+        robot = Robot(env_config, 'robot')
+        robot.set_policy(policy)
+        
+        if args.n_peds is not None:
+            env_config.set('sim', 'human_num', args.n_peds)
+
+        self.human_num = env_config.getint('sim', 'human_num')
+                
+        params['n_peds'] = self.human_num
+        params['lookahead_interval'] = env_config.getfloat('reward', 'lookahead_interval')
+
+        if args.n_sonar_sensors is not None:
+            self.n_sonar_sensors = args.n_sonar_sensors
+        else:
+            self.n_sonar_sensors = env_config.getint('robot', 'n_sonar_sensors')
+        
+        params['n_sonar_sensors'] = self.n_sonar_sensors
+                
+        env = gym.make('CrowdSim-v0', human_num=self.human_num, n_sonar_sensors=self.n_sonar_sensors, success_reward=success_reward, collision_penalty=collision_penalty, time_to_collision_penalty=time_to_collision_penalty,
+                       discomfort_dist=discomfort_dist, discomfort_penalty_factor=discomfort_penalty_factor, lookahead_interval=lookahead_interval, potential_reward_weight=potential_reward_weight,
+                       slack_reward=slack_reward, energy_cost=energy_cost, safe_obstacle_distance=safe_obstacle_distance, safety_penalty_factor=safety_penalty_factor, freespace_reward=freespace_reward,
+                       visualize=visualize, show_sensors=show_sensors, testing=args.test, create_obstacles=args.create_obstacles, create_walls=args.create_walls, display_fps=args.display_fps)
+        
+        print("Gym environment created.")
+                
+        env.set_robot(robot)
+        env.configure(env_config)
+        
+        env.seed()
+        np.random.seed()
+     
+     
+    def string_to_filename(self, input):
+        output = input.replace('"', '').replace('{', '').replace('}', '').replace(' ', '_').replace(',', '_')
+        return output
+
+        return True
 
 @gin.configurable
 def normal_projection_net(action_spec,
@@ -84,7 +215,7 @@ def normal_projection_net(action_spec,
 @gin.configurable
 def train_eval(
     root_dir,
-    env_name='LunarLanderContinuous-v2',
+    env_name='CrowdSim-v0',
     eval_env_name=None,
     env_load_fn=suite_gym.load,
     num_iterations=500000,
@@ -372,8 +503,118 @@ def main(_):
   gin.parse_config_files_and_bindings(FLAGS.gin_file, FLAGS.gin_param)
   train_eval(FLAGS.root_dir)
 
+if __name__ == '__main__':
+    def pathstr(v): return os.path.abspath(v)
+    
+    def str2bool(v):
+        if isinstance(v, bool):
+           return v
+        if v.lower() in ('yes', 'true', 't', 'y', '1'):
+            return True
+        elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+            return False
+        else:
+            raise argparse.ArgumentTypeError('Boolean value expected.')
+    
+    def trunc(f, n):
+        # Truncates/pads a float f to n decimal places without rounding
+        slen = len('%.*f' % (n, f))
+        return float(str(f)[:slen])
+    
+    SimpleNavigation(sys.argv, dict())
+
+    flags.mark_flag_as_required('root_dir')
+    app.run(main)
+
+
 
 if __name__ == '__main__':
-  flags.mark_flag_as_required('root_dir')
-  app.run(main)
+    def pathstr(v): return os.path.abspath(v)
+    
+    def str2bool(v):
+        if isinstance(v, bool):
+           return v
+        if v.lower() in ('yes', 'true', 't', 'y', '1'):
+            return True
+        elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+            return False
+        else:
+            raise argparse.ArgumentTypeError('Boolean value expected.')
+    
+    def trunc(f, n):
+        # Truncates/pads a float f to n decimal places without rounding
+        slen = len('%.*f' % (n, f))
+        return float(str(f)[:slen])
+    
+    class CustomPolicy2(ActorCriticPolicy):
+        def __init__(self, sess, ob_space, ac_space, n_env=1, n_steps=1, n_batch=None, reuse=False, **kwargs):
+            super(CustomPolicy2, self).__init__(sess, ob_space, ac_space, n_env, n_steps, n_batch, reuse=reuse, scale=False)
+    
+            with tf.variable_scope("model", reuse=reuse):
+                activ = tf.nn.tanh
+    
+                extracted_features = tf.layers.flatten(self.processed_obs)
+    
+                pi_h = extracted_features
+                for i, layer_size in enumerate([64, 64]):
+                    pi_h = activ(tf.layers.dense(pi_h, layer_size, name='pi_fc' + str(i)))
+                pi_latent = pi_h
+    
+                vf_h = extracted_features
+                for i, layer_size in enumerate([64, 64]):
+                    vf_h = activ(tf.layers.dense(vf_h, layer_size, name='vf_fc' + str(i)))
+                value_fn = tf.layers.dense(vf_h, 1, name='vf')
+                vf_latent = vf_h
+    
+                self.proba_distribution, self.policy, self.q_value = \
+                    self.pdtype.proba_distribution_from_latent(pi_latent, vf_latent, init_scale=0.01)
+    
+            self.value_fn = value_fn
+            self.initial_state = None        
+            self._setup_init()
+    
+    class CustomPolicy(FeedForwardPolicy):
+        def __init__(self, *args, **kwargs):
+            super(CustomPolicy, self).__init__(*args, layers=[256, 128, 64], layer_norm=False, feature_extraction="mlp", **kwargs)
 
+    if NN_TUNING:
+        param_list = []
+    
+        nn_architectures = [[64, 64], [512, 256, 128], [256, 128, 64]]
+        #nn_architectures = [[64, 64, 64], [1024, 512, 256], [512, 256, 128, 64]]
+        gammas = [0.99, 0.95]
+        for gamma in gammas:
+            for nn_layers in nn_architectures:
+                params = {
+                          "nn_layers": nn_layers,
+                          "gamma": gamma
+                          }
+                param_list.append(params)
+
+        for param_set in param_list:
+            # Custom MLP policy
+            class CustomPolicy(FeedForwardPolicy):
+                def __init__(self, *args, **kwargs):
+                    super(CustomPolicy, self).__init__(*args, layers=params['nn_layers'], layer_norm=False, feature_extraction="mlp", **kwargs)
+                       
+            launch_learn(param_set)
+        
+    elif TUNING:
+        param_list = []
+        
+        discomfort_penalty_factors = [0.05, 0.1, 0.2, 0.5]
+        safety_penalty_factors = [0.01, 0.05, 0.1, 0.5]
+
+        for discomfort_penalty_factor in discomfort_penalty_factors:
+            for safety_penalty_factor in safety_penalty_factors:
+                params = {
+                          "discomfort": discomfort_penalty_factor,
+                          "safety": safety_penalty_factor
+                          }
+                param_list.append(params)
+
+        for param_set in param_list:
+            launch_learn(param_set)
+    else:        
+        SimpleNavigation(sys.argv, dict())
+ 
