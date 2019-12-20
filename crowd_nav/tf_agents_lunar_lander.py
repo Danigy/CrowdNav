@@ -63,9 +63,10 @@ flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
 flags.DEFINE_multi_string('gin_file', None,
                           'Path to the gin config files.')
 flags.DEFINE_multi_string('gin_param', None, 'Gin binding to pass through.')
+flags.DEFINE_boolean('eval_only', False,
+                     'Whether to run evaluation only on trained checkpoints')
 
 FLAGS = flags.FLAGS
-
 
 @gin.configurable
 def normal_projection_net(action_spec,
@@ -112,6 +113,7 @@ def train_eval(
     # Params for eval
     num_eval_episodes=30,
     eval_interval=1000,
+    eval_only=False,
     # Params for summaries and logging
     train_checkpoint_interval=10000,
     policy_checkpoint_interval=5000,
@@ -258,6 +260,18 @@ def train_eval(
       # Initialize graph.
       train_checkpointer.initialize_or_restore(sess)
       rb_checkpointer.initialize_or_restore(sess)
+
+      if eval_only:
+        metric_utils.compute_summaries(
+          eval_metrics,
+          eval_py_env,
+          eval_py_policy,
+          num_episodes=num_eval_episodes,
+          global_step=0,
+          callback=eval_metrics_callback,
+          tf_summaries=False,
+          log=True,
+        )
 
       # Initialize training.
       sess.run(dataset_iterator.initializer)

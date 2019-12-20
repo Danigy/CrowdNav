@@ -36,6 +36,9 @@ ave_episode_reward = 0
 total_episode_reward = 0
 n_episodes = 0
 episode_reward = 0
+n_successes = 0
+n_crashes = 0
+n_timeouts = 0
 
 while n_episodes < 100:
     action, _states = model.predict(obs)
@@ -47,5 +50,13 @@ while n_episodes < 100:
         n_episodes += 1
         ave_episode_reward = total_episode_reward / n_episodes
         print("Episode: " , n_episodes, " Ave Reward: ", ave_episode_reward)
+        if info[0]['terminal_state'] == 'success':
+            n_successes += 1
+        elif info[0]['terminal_state'] == 'crashed':
+            n_crashes += 1
+        elif info[0]['terminal_state'] == 'timeout':
+            n_timeouts += 1
+        print("Episode:", n_episodes, "Success:", n_successes, "Crashed:", n_crashes, "Timeouts:", n_timeouts, "Steps:", info[0]['steps'], "Ave Reward:", ave_episode_reward)
+
     env.render()
     
