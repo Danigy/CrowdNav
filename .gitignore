@@ -20,3 +20,9 @@ videos/
 # egg
 build/
 dist/
+
+tensorboard_logs
+
+.ipynb_checkpoints
+
+.settings
