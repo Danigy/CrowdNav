@@ -94,7 +94,7 @@ def train_eval(
     critic_joint_fc_layers=(64, 64),
     # Params for collect
     initial_collect_steps=100,
-    collect_steps_per_iteration=1,
+    collect_steps_per_iteration=10,
     replay_buffer_capacity=50000,
     # Params for target update
     target_update_tau=0.005,
@@ -111,14 +111,14 @@ def train_eval(
     gradient_clipping=None,
     # Params for eval
     num_eval_episodes=100,
-    eval_interval=1000,
+    eval_interval=500,
     # Params for summaries and logging
     train_checkpoint_interval=10000,
     policy_checkpoint_interval=5000,
     rb_checkpoint_interval=50000,
     log_interval=1000,
     summary_interval=1000,
-    summaries_flush_secs=10,
+    summaries_flush_secs=1,
     debug_summaries=False,
     summarize_grads_and_vars=False,
     eval_metrics_callback=None):
@@ -259,7 +259,7 @@ def train_eval(
       train_checkpointer.initialize_or_restore(sess)
       rb_checkpointer.initialize_or_restore(sess)
       
-      if True:
+      if False:
         metric_utils.compute_summaries(
             eval_metrics,
             eval_py_env,

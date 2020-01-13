@@ -9,18 +9,18 @@ from stable_baselines import SAC, PPO2
 
 env = make_vec_env('LunarLanderContinuous-v2', n_envs=1)
 
-rl_algorithm = "ppo2"
+rl_algorithm = "sac"
 model_name = rl_algorithm + "_lunar_lander"
 
 if rl_algorithm == "sac":
-    model = SAC(MlpPolicy, env, verbose=1, tensorboard_log="./tensorboard_logs/stable_baselines")
+    model = SAC(MlpPolicy, env, verbose=1, learning_rate=0.0005, buffer_size=100000, tensorboard_log="./tensorboard_logs/stable_baselines_test_1000000")
 elif rl_algorithm == "ppo2":
-    model = PPO2(PPO2_MlpPolicy, env, verbose=1, tensorboard_log="./tensorboard_logs/stable_baselines")
+    model = PPO2(PPO2_MlpPolicy, env, verbose=1, tensorboard_log="./tensorboard_logs/stable_baselines_test_1000000")
     
-model.learn(total_timesteps=500000, log_interval=100)
-model.save(model_name)
+#model.learn(total_timesteps=1000000, log_interval=10)
+#model.save(model_name)
 
-del model # remove to demonstrate saving and loading
+#del model # remove to demonstrate saving and loading
 
 if rl_algorithm == "sac":
     model = SAC.load(model_name)
